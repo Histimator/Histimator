@@ -1,4 +1,5 @@
-from histimator.fcn import loglikelihood
+from histimator.fcn import loglikelihood, llhfcn, llhfcn2
+from iminuit import Minuit
 from matplotlib import pyplot as plt
 
 nll = [-loglikelihood(5,i*.1) for i in range(1,100)]
@@ -88,3 +89,17 @@ cs = ax.contourf(X, Y, new_array.transpose(), cmap=cm.PuBu_r)
 cbar = fig.colorbar(cs)
 plt.text(.5, 50, 'x')
 plt.show()
+
+
+### minimize using Minuit
+m = Minuit(llhfcn, limit_x=(40,80))
+m.migrad()
+print m.values
+print m.errors
+
+
+m2 = Minuit(llhfcn2, limit_x=(40,80))
+m2.migrad()
+
+print m2.values
+print m2.errors
