@@ -43,4 +43,4 @@ m = model.getFitter()
 
 this has various built in plotting functionality. file histimodel_test.py makes the following plot using matplotlib
 
-![normfit](examples/fitnorm.png "norm fit")
+![normfit](https://github.com/Histimator/Histimator/blob/master/examples/fitnorm.png "norm fit")
