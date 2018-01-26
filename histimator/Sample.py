@@ -26,6 +26,5 @@ class HistiSample:
         for parameter in pars:
             for par, value in parameter:
                 if par in self.Norms:
-                    print par, "parameter in", self.name
                     hist = [i*value for i in hist]
         return hist
