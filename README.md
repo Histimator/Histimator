@@ -60,4 +60,4 @@ this has various built in plotting functionality. file test_HF_struct.py makes t
 ![normfit](https://github.com/Histimator/Histimator/blob/master/examples/fitnorm.png "norm fit")
 
 ## UML
-![uml](https://github.com/Histimator/Histimator/blob/master/HistimatorUML.png "uml")
+![uml](https://github.com/Histimator/Histimator/blob/master/examples/HistimatorUML.png "uml")

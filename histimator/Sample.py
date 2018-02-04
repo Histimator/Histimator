@@ -1,30 +1,31 @@
-from iminuit import Minuit
-import math
+import numpy as np
 
-from .NormFactor import HistiNorm
-
-class HistiSample:
+class HistiSample(object):
     def __init__(self, name):
         self.name = name
-        self.Norms = {}
-    def SetHisto(self, Histo):
-        self.Histo = Histo
-        return self
-    def AddNorm(self, name, value, minimum, maximum):
-        if not value:
-            value = 1.
-        if not minimum:
-            minimum = value * .1
-        if not maximum:
-            maximum = value * 10.
-        norm = HistiNorm(name, value, minimum, maximum)
-        self.Norms[norm.name] = norm
-        return self
+        self.norms = {}
+        self.nps = {}
+    def SetHisto(self,hist):
+        assert isinstance(hist, list)
+        self.nominal = np.asarray(hist)
+        
+    def SetHistoSys(self, name, uphist, downhist):
+        self.nps[name] = self.Parametrize(len(self.nominal), uphist, downhist)
 
-    def Evaluate(self, pars):
-        hist = self.Histo
-        for parameter in pars:
-            for par, value in parameter:
-                if par in self.Norms:
-                    hist = [i*value for i in hist]
-        return hist
+    def Parametrize(self, length, up, down):
+        func = np.zeros(length, dtype={'names':('nominal','up','down'),'formats':('f8','f8','f8')})
+        func['up'] = up
+        func['down'] = down
+        func['nominal'] = self.nominal
+        return func
+    
+    def PiecewiseLinear(self, alpha, I0, Iup, Idown):
+        if alpha < 0:
+            return (alpha*(I0-Idown))
+        else:
+            return (alpha*(Iup - I0))
+        
+    def Evaluate(self, name, value):
+        f = np.vectorize(self.PiecewiseLinear)
+        func = self.nps[name]
+        return f(value, func['nominal'],func['up'],func['down'])

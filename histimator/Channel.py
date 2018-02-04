@@ -1,35 +1,31 @@
-from iminuit import Minuit
-import math
+import numpy as np
 
-from .Data import HistiData
-from .Sample import HistiSample
-
-class HistiChannel:
+class HistiChannel(object):
+                
     def __init__(self, name):
         self.name = name
-        self.Samples = {}
-        self.Norms = {}
-        self.data = HistiData()
-    def SetData(self, datahist, dataname):
-        if dataname:
-            self.data.name = dataname
-        self.data = self.data.SetData(datahist)
-
+        self.nps = {}
+        self.samples = {}
+        self.nominal = None
+        self.IsDataSet = False #Else set with asimov
     def AddSample(self, sample):
-        if sample.Histo:
-            self.Samples[sample.name] = sample
-            for norm in sample.Norms:
-                self.Norms[norm] = sample.Norms[norm]
+        self.samples[sample.name] = sample
+        if self.nominal is None:
+            self.nominal = sample.nominal
         else:
-            "print that sample has no template"
-        return self
-        
-    def Pdf(self, *pars):
-        for sample in self.Samples:
-            assert self.Samples[sample].Histo
-            hist = [0 for i in self.Samples[sample].Histo]
-        for sample in self.Samples:
-            thissample = self.Samples[sample].Evaluate(pars)
-            assert len(thissample) == len(hist)
-            hist = [hist[i]+thissample[i] for i in range(len(hist))]
-        return hist
+            self.nominal +=sample.nominal
+        for nuis in sample.nps:
+            self.nps[nuis] = sample.nps[nuis]
+
+    def SetData(self, data):
+        self.IsDataSet = True
+        self.data = np.asarray(data)
+
+    def Pdf(self, params):
+        flux = np.zeros(len(self.nominal))
+        for sample in self.samples:
+            sample = self.samples[sample]
+            for par in params:
+                if par[0] in sample.nps:
+                    flux += sample.Evaluate(par[0],par[1])
+        return self.nominal + flux
