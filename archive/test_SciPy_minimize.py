@@ -6,7 +6,7 @@ import math
 from histimator.Model import HistiModel
 from histimator.Channel import HistiChannel
 from histimator.Sample import HistiSample
-from histimator.NormFactor import HistiNorm
+
 
 data = [11.,12.,14.,17.,14.,12.,11.]
 flat_background = [10,10,10,10,10,10,10]
@@ -37,7 +37,7 @@ pars = [('mu',2.)]
 
 print "mu = 2.", model.Channels["SignalRegion"].Pdf(pars)
 
-nll = model.NLL(2.)
+#nll = model.NLL(2.)
 
 #fitter = Minuit(model.NLL)
 #fitter.migrad()
@@ -51,16 +51,15 @@ nll = model.NLL(2.)
 #plt.savefig('examples/fitnorm.png')
 
 from scipy.optimize import minimize
-
-init_pars = [1.]
+initial_pars = [1.]
 par_bounds = [[.1,10.]]
+result = minimize(model.NLL, initial_pars, method='SLSQP', bounds=par_bounds)
 
-result = minimize(model.NLL, init_pars, method='SLSQP', bounds = par_bounds)
-try:
-    assert result.success
-except AssertionError:
-    print result
+#try:
+#    assert result.success
+#except AssertionError:
+#    print result
 
-print result.x
+#print result.x
 
 
