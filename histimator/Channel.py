@@ -14,8 +14,10 @@ class HistiChannel(object):
             self.nominal = sample.nominal
         else:
             self.nominal +=sample.nominal
-        for nuis in sample.nps:
-            self.nps[nuis] = sample.nps[nuis]
+        for nuis in sample.nps.dtype.names:
+            if 'up' in nuis or 'down' in nuis:
+                np_name = nuis.replace('up_','').replace('down_',"")
+                self.nps[np_name] = np_name
 
     def SetData(self, data):
         self.IsDataSet = True
@@ -26,6 +28,6 @@ class HistiChannel(object):
         for sample in self.samples:
             sample = self.samples[sample]
             for par in params:
-                if par[0] in sample.nps:
+                if 'up_' + par[0] in sample.nps.dtype.names or 'down_' + par[0] in sample.nps.dtype.names:
                     flux += sample.Evaluate(par[0],par[1])
         return self.nominal + flux
