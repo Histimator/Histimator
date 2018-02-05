@@ -1,5 +1,5 @@
 from histimator.Sample import HistiSample
-
+from pprint import pprint
 import math
 import numpy as np
 
@@ -13,12 +13,13 @@ print sig.nominal
 print '======Testing Systematics==='
 print 'scaling up and down by 50%'
 sig.SetHistoSys('first',[i*1.5 for i in nominal],[i*.5 for i in nominal])
-print sig.nps
+#print sig.nps
 
 print "up nominal down are "
-print sig.nps['first']['up']
-print sig.nominal
-print sig.nps['first']['down']
+print 'sig+',sig.nps['up_first']
+print 'sig0',sig.nps['nominal']
+print 'sig-',sig.nps['down_first']
+
 
 print '======Testing Evaluation==='
 print 'the variation at -0.5'
@@ -33,16 +34,16 @@ print '======Tertiary Systematics==='
 print 'scaling by an increasing/decreasing linear amount'
 sig.SetHistoSys('second',[(i*.1+1)*a for i,a in enumerate(nominal)],[(i*.1+1)*a for i,a in enumerate(nominal)])
 print 'up nominal down are'
-print sig.nps['second']['up']
-print sig.nominal
-print sig.nps['second']['down']
+print 'sig+',sig.nps['up_second']
+print 'sig0',sig.nominal
+print 'sig-',sig.nps['down_second']
 
 print 'scaling by an increasing/decreasing linear amount with opposite slope'
 sig.SetHistoSys('third',[a+math.pow(a,4-i)*.001 for i,a in enumerate(nominal)],[a-math.pow(a,4-i)*.001 for i,a in enumerate(nominal)])
 print 'up nominal down are'
-print sig.nps['third']['up']
-print sig.nominal
-print sig.nps['third']['down']
+print 'sig+',sig.nps['up_third']
+print 'sig0',sig.nominal
+print 'sig-',sig.nps['down_third']
 
 print '======Evaluate Multiple Systematics==='
 params = [('first',-.5),('second',.3),('third',1.2)]
@@ -76,7 +77,8 @@ print 'evaluate sig+background for parameters',params
 print pdf.Pdf(params)
 
 print '====Add Data To Channel==='
-pdf.SetData([45,62,71,78])
+#pdf.SetData([32.5, 45, 57.5, 70])
+
 
 print '====Define Channel and add Samples==='
 from histimator.Model import HistiModel
