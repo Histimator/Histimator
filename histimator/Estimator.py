@@ -8,12 +8,12 @@ class LikelihoodFit(object):
             self.type = opt.lower()
         else: self.type = 'minuit'
     
-    def newNLL(self, model):
+    def NLL(self, model):
         self.model = model
         names = model.nps.keys()
         init = np.ones(len(names))
-#        ranges = [[i*.1,i*10.] for i in init]
-        result = minimize(self.f, init, args=names, method = 'BFGS')
+#        ranges = [[-i*1.,i*1.] for i in init]
+        result = minimize(self.f, init, args=names, method = 'Nelder-Mead')
         if result.success:
             return zip(names,result.x)
         else:
@@ -26,6 +26,8 @@ class LikelihoodFit(object):
         for chan in model.Channels:
             thechannel = model.Channels[chan]
             expected = thechannel.Pdf(params)
+            if not thechannel.IsDataSet:
+                thechannel.data = thechannel.nominal
             if nll:
                 nll -= (np.sum(thechannel.data*np.log(expected)) - np.sum(expected))
             else:

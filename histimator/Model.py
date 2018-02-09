@@ -10,10 +10,7 @@ class HistiModel:
         self.Channels = {}
         self.nps = {}
     def AddChannel(self, channel):
-        if channel.IsDataSet:
-            self.Channels[channel.name] = channel
-        else:
-            print "No Data Set - Using Asimov"
+        self.Channels[channel.name] = channel
             #To Do impliment Asimov
 
         for param in channel.nps:

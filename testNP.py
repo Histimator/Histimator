@@ -77,13 +77,14 @@ print 'evaluate sig+background for parameters',params
 print pdf.Pdf(params)
 
 print '====Add Data To Channel==='
-#pdf.SetData([32.5, 45, 57.5, 70])
+pdf.SetData([32.5, 45, 57.5, 70])
 
 
 print '====Define Channel and add Samples==='
 from histimator.Model import HistiModel
 model = HistiModel()
 model.AddChannel(pdf)
+
 
 print '############################'
 print '######   Minimize!    ######'
@@ -94,4 +95,39 @@ opt = LikelihoodFit('test')
 
 print '====Minimize==='
 
-print 'result is',opt.newNLL(model)
+print 'result is',opt.NLL(model)
+
+print '############################'
+print '# Adding Second Channel! ###'
+print '############################'
+
+nominal = [1.,2.,3.,4.]
+sig = HistiSample('signal')
+sig.SetHisto(nominal)
+print sig.nominal
+print '======Testing Systematics==='
+print 'scaling up and down by 50%'
+sig.SetHistoSys('first',[i*1.5 for i in nominal],[i*.5 for i in nominal])
+
+
+bkgnominal = [100.,100.,100.,100.]
+bkg = HistiSample('signal')
+bkg.SetHisto(bkgnominal)
+print bkg.nominal
+print '====Set Histo Sys==='
+bkg.SetHistoSys('first',[i*1.5 for i in nominal],[i*.5 for i in nominal])
+bkg.SetHistoSys('second',[(i*.1+1)*a for i,a in enumerate(nominal)],[(i*.1+1)*a for i,a in enumerate(nominal)])
+bkg.SetHistoSys('third',[a+math.pow(a,4-i)*.001 for i,a in enumerate(nominal)],[a-math.pow(a,4-i)*.001 for i,a in enumerate(nominal)])
+
+print '====Import Channel and Add Samples==='
+from histimator.Channel import HistiChannel
+ctlpdf = HistiChannel('ControlRegion')
+ctlpdf.AddSample(sig)
+ctlpdf.AddSample(bkg)
+
+model.AddChannel(ctlpdf)
+#opt = LikelihoodFit('test')
+
+print '====Minimize==='
+
+#print 'result is',opt.NLL(model)
