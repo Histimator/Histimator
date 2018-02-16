@@ -37,6 +37,7 @@ Usage
 the histimator core directory has a file called Models containing the core HistiModel class.
 
 the model is initialised::
+
     from histimator.models import HistiModel
     model = HistiModel("model name")
 
