@@ -32,6 +32,67 @@ Features
 
 * TODO
 
+Usage
+-----
+the histimator core directory has a file called Models containing the core HistiModel class.
+
+the model is initialised 
+
+```
+from histimator.models import HistiModel
+model = HistiModel("model name")
+```
+Each channel is defined as:
+```
+from histimodel.Channel import HistiChannel
+SR = HistiChannel("SignalRegion")
+```
+
+data can be added to the channels as
+```
+SR.SetData([list of data points])
+```
+
+any number of samples are defined as:
+```
+from histimator.Sample import HistiSample
+sig = HistiSample("Signal")
+bkg = HistiSample("Background")
+```
+
+each of which needs a histogram:
+```
+sig.SetHisto(numpy.histogram)
+bkg.SetHisto(numpy.histogram)
+```
+
+currently the only parameters available are an overal normalisation on these templates.
+this is given with a name an initial value (default 1) and a range (default [0.1,10]). Currently no implementation is actually in place to tell Minuit about this range...
+```
+sig.AddNorm("some_norm",1,0,3)
+```
+
+Finally, the samples must be added to the channel and this added to the model.
+```
+SR.AddSample(sig)
+SR.AddSample(bkg)
+model.AddChannel(SR)
+```
+
+This model can now be evaluated using probfit Binned Likelihood function
+```
+from iminuit import Minuit
+from probfit import BinnedLH
+blh = BinnedLH(model.pdf, data, bins=10, bound=bound, extended=True)
+m = Minuit(blh, some_norm=0.5, error_some_norm=1.5)
+m.migrad()
+```
+
+this has various built in plotting functionality. 
+
+![normfit](https://github.com/Histimator/Histimator/blob/master/examples/fitnorm.png "norm fit")
+
+
 Credits
 -------
 
