@@ -32,6 +32,12 @@ data = gen_toy(lambda x : m.pdf(x,1), 150,(0,10))
 chan.SetData(data)
 
 
+from pprint import pprint
+print "---- printing model --- "
+pprint (chan.__dict__)
+print "---------------------------- "
+
+
 blh = BinnedLH(m.pdf, data, bins=10, bound=bound, extended=True)
 
 minimiser = Minuit(blh, SigXSecOverSM=0.5, error_SigXSecOverSM=1.)
