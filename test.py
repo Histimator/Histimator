@@ -1,7 +1,9 @@
 from histimator.models import HistiModel, HistiChannel, HistiSample
+from histimator.estimator import BinnedLH
 import numpy as np
 
-from probfit import gen_toy, BinnedLH
+from probfit import gen_toy
+# , BinnedLH
 from iminuit import Minuit
 
 m = HistiModel('first model')
@@ -38,11 +40,11 @@ pprint (chan.__dict__)
 print "---------------------------- "
 
 
-blh = BinnedLH(m.pdf, data, bins=10, bound=bound, extended=True)
+blh = BinnedLH(m, data=None, bins=10, bound=bound, extended=True)
 
-minimiser = Minuit(blh, SigXSecOverSM=0.5, error_SigXSecOverSM=1.)
+# minimiser = Minuit(blh, SigXSecOverSM=0.5, error_SigXSecOverSM=1.)
 
-print 'about to test SigXSecOverSM at value', minimiser.values['SigXSecOverSM']
+# print 'about to test SigXSecOverSM at value', minimiser.values['SigXSecOverSM']
 
-minimiser.migrad()
-print 'migrad gives SigXSecOverSM as value', minimiser.values['SigXSecOverSM']
+# minimiser.migrad()
+# print 'migrad gives SigXSecOverSM as value', minimiser.values['SigXSecOverSM']
