@@ -5,6 +5,8 @@ import numpy as np
 from probfit import gen_toy
 # , BinnedLH
 from iminuit import Minuit
+from pprint import pprint
+
 
 m = HistiModel('first model')
 
@@ -28,13 +30,12 @@ chan = HistiChannel("SR")
 chan.AddSample(signal)
 chan.AddSample(background)
 
-m.AddChannel(chan)
 
+m.AddChannel(chan)
 data = gen_toy(lambda x : m.pdf(x,1), 150,(0,10))
 chan.SetData(data)
+m.AddChannel(chan)
 
-
-from pprint import pprint
 print "---- printing model --- "
 pprint (chan.__dict__)
 print "---------------------------- "
@@ -42,6 +43,7 @@ print "---------------------------- "
 
 blh = BinnedLH(m, data=None, bins=10, bound=bound, extended=True)
 
+print blh(0)
 # minimiser = Minuit(blh, SigXSecOverSM=0.5, error_SigXSecOverSM=1.)
 
 # print 'about to test SigXSecOverSM at value', minimiser.values['SigXSecOverSM']

@@ -4,6 +4,13 @@ import numpy as np
 from iminuit.util import describe
 
 
+def xlogyx(x, y):
+    return np.where(
+        z < y,
+        +x*np.log((y-x)/x),
+        -x*np.log((x-y)/y)
+    )
+
 class FakeFuncCode:
 
     def __init__(self, f, prmt=None, dock=0, append=None):
@@ -107,56 +114,75 @@ class BinnedLH(object):
         """
         if isinstance(model, models.HistiModel):
             self.f = model.pdf
+            self.binedges = model.binedges
+            print "[debug] bin edges : ", model.binedges
             self.func_code = FakeFuncCode(self.f, dock=True)
         else:
             print "ERROR model should be an instance of HistiModels"
 
+        # This is the part where the binning is done, now should be replaced
+        # by feeding directly the model and make sure the model has data
+        # h, self.edges = np.histogram(data, bins, range=bound, weights=weights)
+
+        print model.data
+        print model.binedges
+
+        if hasattr(model, "data"):
+            self.data = model.data
+            if self.data is None:
+                print "error: data is None, please feed the model with data"
+            else:
+                # use binned data only
+                self.h = np.asarray(data)
+                self.N = self.h.sum()
+        else:
+            print "error: model has no attribute data"
+
         self.use_w2 = use_w2
         self.extended = extended
-        # if bound is None: bound = minmax(data)
-    #     self.mymin, self.mymax = bound
-    #     # This is the part where the binning is done, now should be replaced
-    #     # by feeding directly the model and make sure the model has data
-    #     # h, self.edges = np.histogram(data, bins, range=bound, weights=weights)
+        if bound is None:
+            bound = min(data), max(data)
+        self.mymin, self.mymax = bound
 
-    #     self.h = np.asarray(h)
-    #     self.N = h.sum()
+        # this is part is commented for the moment and need some thoughs
+        # if weights is not None:
+        #         if weighterrors is None:
+        #             self.w2, _ = np.histogram(data, bins, range=bound,
+        #                                       weights=weights * weights)
+        #         else:
+        #             self.w2, _ = np.histogram(data, bins, range=bound,
+        #                                       weights=weighterrors * weighterrors)
+        #     else:
+        #         self.w2, _ = np.histogram(data, bins, range=bound, weights=None)
+        #     self.w2 = float2double(self.w2)
+        #     self.midpoints = mid(self.edges)
+        #     self.binwidth = np.diff(self.edges)
 
-    #     if weights is not None:
-    #         if weighterrors is None:
-    #             self.w2, _ = np.histogram(data, bins, range=bound,
-    #                                       weights=weights * weights)
-    #         else:
-    #             self.w2, _ = np.histogram(data, bins, range=bound,
-    #                                       weights=weighterrors * weighterrors)
-    #     else:
-    #         self.w2, _ = np.histogram(data, bins, range=bound, weights=None)
+        #     self.bins = bins
+        #     self.badvalue = badvalue
+        #     self.ndof = self.bins - (self.func_code.co_argcount - 1)
+        #     self.nint_subdiv = nint_subdiv
 
-    #     self.w2 = float2double(self.w2)
-    #     self.midpoints = mid(self.edges)
-    #     self.binwidth = np.diff(self.edges)
+    def __call__(self, *arg):
+        """
+        Calculate sum -log(poisson binned likelihood) given positional
+        arguments
+        """
+        self.last_arg = arg
 
-    #     self.bins = bins
-    #     self.badvalue = badvalue
-    #     self.ndof = self.bins - (self.func_code.co_argcount - 1)
-
-    #     self.nint_subdiv = nint_subdiv
-
-    # def __call__(self, *arg):
-    #     """
-    #     Calculate sum -log(poisson binned likelihood) given positional
-    #     arguments
-    #     """
-    #     self.last_arg = arg
-    #     ret = compute_bin_lh_f(self.f,
-    #                            self.edges,
-    #                            self.h,  #histogram,
-    #                            self.w2,
-    #                            self.N,  #sum of h
-    #                            arg, self.badvalue,
-    #                            self.extended, self.use_w2,
-    #                            self.nint_subdiv)
-    #     return ret
+        bw = np.diff(self.binedges)
+        th = self.h
+        # tm = np.array(
+        #     [self.f(self.binedges[i]+bw[i]) for i in range(bw.shape[0])]
+        # )
+        tm = np.array(
+            [ self.binedges[i]+(bw[i]*0.5) for i in range(bw.shape[0])]
+        )
+        print tm
+        if not self.extended:
+            return (xlogyx(th, tm*self.N) + (th-tm*self.N)).sum()
+        else:
+            return 0.0
 
     # def draw(self, minuit=None, ax = None,
     #          parmloc=(0.05, 0.95), nfbins=200, print_par=True,
