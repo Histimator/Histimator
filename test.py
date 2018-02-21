@@ -20,7 +20,7 @@ signal.AddNorm("SigXSecOverSM", 0.5,0,3)
 background = HistiSample("background1")
 background.SetHisto(hbkg)
 
-
+background.AddOverallSys("JES", 0.9, 1.1)
 
 chan = HistiChannel("SR")
 chan.AddSample(signal)
@@ -28,13 +28,13 @@ chan.AddSample(background)
 
 m.AddChannel(chan)
 
-data = gen_toy(lambda x : m.pdf(x,1), 150,(0,10))
+data = gen_toy(lambda x : m.pdf(x,1,1), 150,(0,10))
 chan.SetData(data)
 
 
 blh = BinnedLH(m.pdf, data, bins=10, bound=bound, extended=True)
 
-minimiser = Minuit(blh, SigXSecOverSM=0.5, error_SigXSecOverSM=1.)
+minimiser = Minuit(blh, SigXSecOverSM=0.5, JES=1., error_SigXSecOverSM=1., error_JES=.1)
 
 print 'about to test SigXSecOverSM at value', minimiser.values['SigXSecOverSM']
 

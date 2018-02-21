@@ -1,6 +1,8 @@
 import numpy as np
 from .util import MinimalFuncCode, FakeFuncCode
 from iminuit import describe
+from interpolation import Interpolate
+
 
 class HistogramPdf(object):
     def __init__(self, hy, binedges, xname='x'):
@@ -52,3 +54,31 @@ class NormedHist:
         N = arg[-1]
         ana = self.f.integrate(bound, nint, arg[:-1])
         return N*ana
+
+class OverallSys:
+    def __init__(self, f, OverallSys='NormSys', up=1., down=1., scheme=1.):
+        self.f = f
+        self.up = up
+        self.down = down
+        self.scheme = scheme
+        if OverallSys in describe(f):
+            raise ValueError('%s is already taken pick something else for systematicname'%OverallSys)
+        self.func_code = FakeFuncCode(f,append=OverallSys)
+        #print self.func_code.__dict__
+        self.func_defaults=None
+
+    def __call__(self, *arg):
+        fval = self.f(arg[0])
+        alpha = arg[-1]
+        inter = Interpolate(self.scheme)
+        if fval>0:
+            return inter(alpha, fval, self.up, self.down)
+        else:
+            return 0
+
+    def integrate(self, bound, nint, *arg):
+        alpha = arg[-1]
+        inter = Interpolate(self.scheme)
+        mod = inter(alpha, 1., self.up, self.down)
+        ana = self.f.integrate(bound, nint, arg[:-1])
+        return mod*ana

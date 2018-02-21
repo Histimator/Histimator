@@ -1,4 +1,4 @@
-from pdfs import HistogramPdf, NormedHist
+from pdfs import HistogramPdf, NormedHist, OverallSys
 from probfit import AddPdf
 
 class HistiModel(object):
@@ -47,4 +47,5 @@ class HistiSample(object):
         self.pdf = HistogramPdf(hy, be)
     def AddNorm(self, name='mu', nom = 1, min = 0, max = 3):
         self.pdf = NormedHist(self.pdf, norm=name)
-    
+    def AddOverallSys(self, name, uncertainty_down, uncertainty_up, scheme=1.):
+        self.pdf = OverallSys(self.pdf, name, uncertainty_up, uncertainty_down, scheme)
