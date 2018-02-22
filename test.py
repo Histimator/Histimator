@@ -4,7 +4,7 @@ import numpy as np
 
 from probfit import gen_toy
 # , BinnedLH
-from iminuit import Minuit
+from iminuit import Minuit, describe
 from pprint import pprint
 
 
@@ -33,20 +33,31 @@ chan.AddSample(background)
 
 m.AddChannel(chan)
 data = gen_toy(lambda x : m.pdf(x,1), 150,(0,10))
-chan.SetData(data)
+print "data shape : ",  data.shape
+hdata,_ = np.histogram(data, bins=10, range=bound)
+print "dhist shape : ", hdata.shape
+chan.SetData(hdata)
 m.AddChannel(chan)
 
+
+print "---------------------------- "
 print "---- printing model --- "
 pprint (chan.__dict__)
+for n_, s_ in chan.__dict__['samples'].items():
+    print 'sample : ', n_
+    pprint (s_.__dict__)
 print "---------------------------- "
-
+print "---------------------------- "
 
 blh = BinnedLH(m, data=None, bins=10, bound=bound, extended=True)
 
-print blh(0)
-# minimiser = Minuit(blh, SigXSecOverSM=0.5, error_SigXSecOverSM=1.)
+def func_(param):
+    return blh(param[0])
 
-# print 'about to test SigXSecOverSM at value', minimiser.values['SigXSecOverSM']
+minimiser = Minuit(blh, SigXSecOverSM=0.5, error_SigXSecOverSM=0.1)
 
-# minimiser.migrad()
-# print 'migrad gives SigXSecOverSM as value', minimiser.values['SigXSecOverSM']
+print 'about to test SigXSecOverSM at value', minimiser.values['SigXSecOverSM']
+
+minimiser.migrad()
+minimiser.minos()
+print 'migrad gives SigXSecOverSM as value', minimiser.values['SigXSecOverSM']

@@ -4,12 +4,23 @@ import numpy as np
 from iminuit.util import describe
 
 
-def xlogyx(x, y):
+def xlogyx(x, y, minval = 1e-100):
     return np.where(
-        z < y,
-        +x*np.log((y-x)/x),
-        -x*np.log((x-y)/y)
+        x < y,
+        np.where(x < minval, 0, +x * log1p(np.divide(y-x, x))),
+        np.where(y < minval, 0, -x * log1p(np.divide(x-y, y)))
     )
+
+
+def log1p(x, minval=1e-100):
+    # From ROOT implementation
+    print "inside log1p x : ", x
+    x = np.asarray(x)
+    y = 1 + x
+    return np.where(
+        y > 0, np.log(y) - ((y-1)-x)/y.clip(min=minval), 0
+    )
+
 
 class FakeFuncCode:
 
@@ -115,7 +126,6 @@ class BinnedLH(object):
         if isinstance(model, models.HistiModel):
             self.f = model.pdf
             self.binedges = model.binedges
-            print "[debug] bin edges : ", model.binedges
             self.func_code = FakeFuncCode(self.f, dock=True)
         else:
             print "ERROR model should be an instance of HistiModels"
@@ -124,16 +134,14 @@ class BinnedLH(object):
         # by feeding directly the model and make sure the model has data
         # h, self.edges = np.histogram(data, bins, range=bound, weights=weights)
 
-        print model.data
-        print model.binedges
-
         if hasattr(model, "data"):
             self.data = model.data
             if self.data is None:
                 print "error: data is None, please feed the model with data"
             else:
                 # use binned data only
-                self.h = np.asarray(data)
+                self.h = np.asarray(self.data)
+                self.binned_data = data
                 self.N = self.h.sum()
         else:
             print "error: model has no attribute data"
@@ -160,7 +168,7 @@ class BinnedLH(object):
 
         #     self.bins = bins
         #     self.badvalue = badvalue
-        #     self.ndof = self.bins - (self.func_code.co_argcount - 1)
+        # self.ndof = self.bins - (self.func_code.co_argcount - 1)
         #     self.nint_subdiv = nint_subdiv
 
     def __call__(self, *arg):
@@ -172,17 +180,13 @@ class BinnedLH(object):
 
         bw = np.diff(self.binedges)
         th = self.h
-        # tm = np.array(
-        #     [self.f(self.binedges[i]+bw[i]) for i in range(bw.shape[0])]
-        # )
+
         tm = np.array(
-            [ self.binedges[i]+(bw[i]*0.5) for i in range(bw.shape[0])]
+            [self.binedges[i]+(bw[i]*0.5) for i in range(bw.shape[0])]
         )
-        print tm
-        if not self.extended:
-            return (xlogyx(th, tm*self.N) + (th-tm*self.N)).sum()
-        else:
-            return 0.0
+        return (xlogyx(th, tm * self.N) + (th - tm * self.N)).sum()
+
+
 
     # def draw(self, minuit=None, ax = None,
     #          parmloc=(0.05, 0.95), nfbins=200, print_par=True,
