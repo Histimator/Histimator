@@ -13,6 +13,20 @@ with open('HISTORY.rst') as history_file:
 
 requirements = [
     # TODO: Put package requirements here
+    "bumpversion",
+    "wheel",
+    "watchdog",
+    "flake8",
+    "tox",
+    "coverage",
+    "Sphinx",
+    "twine",
+    "cryptography",
+    "PyYAML",
+    "numpy",
+    "scipy",
+    "iminuit",
+    "probfit"
 ]
 
 setup_requirements = [
