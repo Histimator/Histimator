@@ -44,7 +44,7 @@ setup(
     long_description=readme + '\n\n' + history,
     author="Yacine Haddad",
     author_email='yhaddad@cern.ch',
-    url='git@github.com:Histimator/Histimator.git',
+    url='https://github.com/Histimator/Histimator.git',
     packages=find_packages(include=['histimator', 'Histimator']),
     include_package_data=True,
     install_requires=requirements,
