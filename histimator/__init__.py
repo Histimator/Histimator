@@ -3,7 +3,6 @@
 """Top-level package for Histimator."""
 from backend import *
 from estimator import *
-from iterpolation import *
 from models import *
 from optimiser import *
 from pdfs import *

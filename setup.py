@@ -39,7 +39,7 @@ test_requirements = [
 
 setup(
     name='Histimator',
-    version='0.1.0',
+    version='0.2.0',
     description="A solution for performing maximum likelihood estimation on models built from histogram templates.",
     long_description=readme + '\n\n' + history,
     author="Yacine Haddad",
