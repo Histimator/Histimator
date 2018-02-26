@@ -37,12 +37,12 @@ class BinnedLH(object):
         self.mymin, self.mymax = bound
 
     def __call__(self, *arg):
-        self.last_arg = arg[1:]
+        self.params = arg[1:]
         bwidth = np.diff(self.binedges)
         centre = self.binedges[:-1] + bwidth/2.0
         h_meas = self.h
         h_pred = np.asarray(
-            [self.pdf(centre[i], arg[-1]) for i in range(bwidth.shape[0])]
+            [self.pdf(centre[i], self.params) for i in range(bwidth.shape[0])]
         )
         h_pred = h_pred*bwidth
         if self.extended:
