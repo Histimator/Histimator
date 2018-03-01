@@ -3,7 +3,7 @@ import scipy.stats as st
 import models
 from scipy.stats import poisson
 from util import FakeFuncCode
-
+from iminuit import describe
 
 class BinnedLH(object):
     def __init__(self, model, data=None, bins=40, weights=None,
@@ -38,11 +38,15 @@ class BinnedLH(object):
 
     def __call__(self, *arg):
         self.params = arg[1:]
+        print 'arg is ',arg
+        print 'params are',self.params
+        print 'described as', describe(self.pdf)
         bwidth = np.diff(self.binedges)
         centre = self.binedges[:-1] + bwidth/2.0
         h_meas = self.h
+        
         h_pred = np.asarray(
-            [self.pdf(centre[i], self.params) for i in range(bwidth.shape[0])]
+            [self.pdf((centre[i], arg)) for i in range(bwidth.shape[0])]
         )
         h_pred = h_pred*bwidth
         if self.extended:

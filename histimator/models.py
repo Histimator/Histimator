@@ -1,5 +1,5 @@
-from pdfs import HistogramPdf, NormedHist, OverallSys
-from probfit import AddPdf
+from pdfs import HistogramPdf, NormedHist, OverallSys, AddPdf
+#from probfit import AddPdf
 
 
 class HistiModel(object):
