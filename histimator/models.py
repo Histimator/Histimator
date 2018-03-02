@@ -1,5 +1,5 @@
-from pdfs import HistogramPdf, NormedHist, OverallSys, AddPdf
-#from probfit import AddPdf
+from pdfs import HistogramPdf, NormedHist, OverallSys
+from probfit import AddPdf
 
 
 class HistiModel(object):
@@ -29,15 +29,22 @@ class HistiModel(object):
             else:
                 self.pdf = AddPdf(self.pdf, s.pdf)
         self.data = channel.data
-    def Parameters(self):
-        parameters = {'errordef':1}
-        for param in self.pois:
-            name = param
-            param = self.pois[param]
-            parameters[name] = param['nom']
-            parameters['limit_{}'.format(name)] = param['range']
-            parameters['error_{}'.format(name)] = (param['range'][1]-param['range'][0])/2.
-        return parameters
+    def FitParameters(self, opt="minuit"):
+        if "minuit" in opt.lower():
+            parameters = {'errordef':1}
+            for param in self.pois:
+                name = param
+                param = self.pois[param]
+                parameters[name] = param['nom']
+                parameters['limit_{}'.format(name)] = param['range']
+                parameters['error_{}'.format(name)] = (param['range'][1]-param['range'][0])/2.
+            return parameters
+        else:
+            print "fit parameters for other optimisers not implemented yet"
+    def ParametersOfInterest(self):
+        return [poi for poi in self.pois]
+    def NuisanceParameters(self):
+        return self.nps
 
 class HistiChannel(object):
     def __init__(self, name=None):
