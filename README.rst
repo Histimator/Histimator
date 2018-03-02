@@ -26,12 +26,6 @@ A solution for performing maximum likelihood estimation on models built from his
 * Free software: GNU General Public License v3
 * Documentation: https://histimator.readthedocs.io.
 
-
-Features
---------
-
-* TODO
-
 Usage
 -----
 the histimator core directory has a file called Models containing the core HistiModel class.
@@ -87,8 +81,3 @@ this has various built in plotting functionality.
 
 Credits
 -------
-
-This package was created with Cookiecutter_ and the `audreyr/cookiecutter-pypackage`_ project template.
-
-.. _Cookiecutter: https://github.com/audreyr/cookiecutter
-.. _`audreyr/cookiecutter-pypackage`: https://github.com/audreyr/cookiecutter-pypackage
