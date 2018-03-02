@@ -76,8 +76,7 @@ This model can now be evaluated using probfit Binned Likelihood function::
 
 this has various built in plotting functionality. 
 
-.. image:: https://github.com/Histimator/Histimator/blob/master/docs/fitnorm.png
-
+.. image:: https://github.com/Histimator/Histimator/raw/master/docs/fitnorm.png
 
 Credits
 -------
