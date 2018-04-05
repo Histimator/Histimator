@@ -1,8 +1,17 @@
+"""Built-in estimator classes.
+"""
+
+# from . import backend as K
+# if K.backend() == 'tensorflow':
+# import tensorflow as tf
+
+
 import numpy as np
 import scipy.stats as st
 import models
 from scipy.stats import poisson
-from util import FakeFuncCode
+from .util import FakeFuncCode
+from iminuit import describe
 
 
 class BinnedLH(object):
@@ -14,6 +23,7 @@ class BinnedLH(object):
             self.pdf = model.pdf
             self.binedges = model.binedges
             self.func_code = FakeFuncCode(self.pdf, dock=True)
+            self.parameters = model.Parameters()
         else:
             print "ERROR model should be an instance of HistiModels"
 
@@ -38,11 +48,15 @@ class BinnedLH(object):
 
     def __call__(self, *arg):
         self.params = arg[1:]
+        feed_parameters = {
+            par : value  for par, value in self.parameters.items() if par in describe(self.pdf)[1]
+        }
+        print "parameters : ",
         bwidth = np.diff(self.binedges)
         centre = self.binedges[:-1] + bwidth/2.0
         h_meas = self.h
         h_pred = np.asarray(
-            [self.pdf(centre[i], self.params) for i in range(bwidth.shape[0])]
+            [self.pdf(x=centre[i], **feed_parameters) for i in range(bwidth.shape[0])]
         )
         h_pred = h_pred*bwidth
         if self.extended:

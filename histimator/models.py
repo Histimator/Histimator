@@ -12,6 +12,7 @@ class HistiModel(object):
         self.binedges = None
         self.pois = {}
         self.nps = []
+
     def AddChannel(self, channel):
         name = channel.name
         if name is None:
@@ -29,15 +30,19 @@ class HistiModel(object):
             else:
                 self.pdf = AddPdf(self.pdf, s.pdf)
         self.data = channel.data
+
     def Parameters(self):
-        parameters = {'errordef':1}
+        parameters = {'errordef': 1}
         for param in self.pois:
             name = param
             param = self.pois[param]
             parameters[name] = param['nom']
             parameters['limit_{}'.format(name)] = param['range']
-            parameters['error_{}'.format(name)] = (param['range'][1]-param['range'][0])/2.
+            parameters['error_{}'.format(name)] = (
+                param['range'][1]-param['range'][0]
+            )/2.
         return parameters
+
 
 class HistiChannel(object):
     def __init__(self, name=None):
@@ -62,14 +67,14 @@ class HistiSample(object):
         self.name = name
         self.pois = {}
         self.nps = []
+
     def SetHisto(self, hist):
         self.hist = hist
         self.bincontent, self.binedges = self.hist
         self.pdf = HistogramPdf(self.bincontent, self.binedges)
 
     def AddNorm(self, name='mu', nom=1, min=0, max=3):
-        
-        self.pois[name] = { 'nom':nom, 'range':(0,3) }
+        self.pois[name] = {'nom': nom, 'range': (0, 3)}
         self.pdf = NormedHist(self.pdf, norm=name)
 
     def AddOverallSys(self, name, uncertainty_down, uncertainty_up, scheme=1.):
