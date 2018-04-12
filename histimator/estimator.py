@@ -49,17 +49,22 @@ class BinnedLH(object):
         self.func_code = make_func_code(pdf_sig[1:])
         self.func_defaults = None
 
-
-    def __call__(self, *arg):
-
+    def evaluatePDF(self, *arg):
         bwidth = np.diff(self.binedges)
         centre = self.binedges[:-1] + bwidth/2.0
+        h_pred = np.asarray([self.pdf(centre[i], *arg) for i in range(bwidth.shape[0])]) * bwidth
+        return h_pred
+
+    def __call__(self, *arg):
+        parameters = dict(zip(describe(self.pdf)[1:],arg))
+        constraints = []
+        for par in parameters.keys():
+            if "norm" in par.lower():
+                constraints.append(parameters[par])
+        constraint = st.norm(1,1).pdf(np.asarray(constraints)).sum()
+        h_pred = self.evaluatePDF(*arg)
         h_meas = self.h
-        h_pred = np.asarray(
-            [self.pdf(centre[i], *arg) for i in range(bwidth.shape[0])]
-        )
-        h_pred = h_pred*bwidth
         if self.extended:
-            return -st.poisson.logpmf(self.N, h_pred.sum())-poisson.logpmf(h_meas, h_pred).sum()
+            return (-st.poisson.logpmf(self.N, h_pred.sum())-poisson.logpmf(h_meas, h_pred).sum())*constraint
         else:
-            return -poisson.logpmf(h_meas, h_pred).sum()
+            return -poisson.logpmf(h_meas, h_pred).sum()*constraint
