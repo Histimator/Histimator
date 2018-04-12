@@ -10,7 +10,7 @@ import numpy  as np
 import pandas as pd
 import scipy.stats as st
 
-plt.style.use('physics')
+# plt.style.use('physics')
 
 plt.rcParams['axes.grid'       ]  = False
 plt.rcParams['xtick.labelsize' ]  = 14
