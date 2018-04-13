@@ -56,7 +56,10 @@ class BinnedLH(object):
         return h_pred
 
     def __call__(self, *arg):
+        constraint = 0.
+        h_pred = self.evaluatePDF(*arg)
         parameters = dict(zip(describe(self.pdf)[1:],arg))
+#        print "parameters are", parameters
         constraints = []
         for par in parameters.keys():
             if "syst" in par.lower():
@@ -66,12 +69,11 @@ class BinnedLH(object):
             constraint = 0.
 #        else:
 #            print "constraint at {} is {}".format(arg,constraint)
-        h_pred = self.evaluatePDF(*arg)
         h_meas = self.h
         if self.extended:
-            return (-st.poisson.logpmf(self.N, h_pred.sum())-poisson.logpmf(h_meas, h_pred).sum())+constraint
+            return -st.poisson.logpmf(self.N, h_pred.sum())-poisson.logpmf(h_meas, h_pred).sum() - constraint
         else:
-            return -poisson.logpmf(h_meas, h_pred).sum()+constraint
+            return -poisson.logpmf(h_meas, h_pred).sum() - constraint
 
 def isNaN(num):
     return num != num
