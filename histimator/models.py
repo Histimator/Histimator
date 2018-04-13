@@ -39,17 +39,17 @@ class HistiModel(object):
             param = self.pois[param]
             parameters[name] = param['nom']
             parameters['limit_{}'.format(name)] = param['range']
-            parameters['error_{}'.format(name)] = (
-                param['range'][1]-param['range'][0]
-            )/2.
+#            parameters['error_{}'.format(name)] = (
+#                param['range'][1]-param['range'][0]
+#            )/2.
         for np in self.nps:
             name = np
             np = self.nps[np]
             parameters[name] = np['nom']
             parameters['limit_{}'.format(name)] = np['range']
-            parameters['error_{}'.format(name)] = (
-                np['range'][1]-np['range'][0]
-            )/2.
+#            parameters['error_{}'.format(name)] = (
+#                np['range'][1]-np['range'][0]
+#            )/2.
         return parameters
 
 
@@ -87,7 +87,8 @@ class HistiSample(object):
         self.pdf = NormedHist(self.pdf, norm=name)
 
     def AddOverallSys(self, name, uncertainty_down, uncertainty_up, scheme=1.):
-        self.nps[name] = {'nom':math.fabs(uncertainty_up-uncertainty_down),'range':(-10*uncertainty_down,10*uncertainty_up)}
+        self.nps[name] = {'nom':math.fabs(uncertainty_up-uncertainty_down),'range':(0,100)}
+        print "adding np", name, self.nps[name]
         self.pdf = OverallSys(
             self.pdf, name, uncertainty_up, uncertainty_down, scheme
         )

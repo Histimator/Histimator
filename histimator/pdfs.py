@@ -76,14 +76,12 @@ class OverallSys:
         self.func_defaults = None
 
     def __call__(self, *arg):
-        fval = self.f(arg[0])
+        fval = self.f(*arg[:-1])
         alpha = arg[-1]
         inter = Interpolate(self.scheme)
-        if fval > 0:
-            return inter(alpha, fval, self.up, self.down)
-        else:
-            return 0
-
+        scale = inter(alpha, 1., self.up, self.down)
+        return fval *scale 
+        
     def integrate(self, bound, nint, *arg):
         alpha = arg[-1]
         inter = Interpolate(self.scheme)

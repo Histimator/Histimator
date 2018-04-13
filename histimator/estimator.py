@@ -64,8 +64,8 @@ class BinnedLH(object):
         for par in parameters.keys():
             if "syst" in par.lower():
                 constraints.append(parameters[par])
-        constraint = st.norm(1,1).logpdf(np.asarray(constraints)).sum()
-
+        constraint = st.norm(np.asarray(constraints),1).logpdf(1).sum()
+#        new_constraint = st.norm(np.asarray(constraints),1,1)
         if constraint <= 0. or isNaN(constraint) : 
             constraint = 0.
 #        else:
