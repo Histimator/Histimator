@@ -1,4 +1,4 @@
-from pdfs import HistogramPdf, NormedHist, OverallSys
+from pdfs import HistogramPdf, NormedHist, OverallSys, HistoSys
 from probfit import AddPdf
 import math
 
@@ -87,8 +87,14 @@ class HistiSample(object):
         self.pdf = NormedHist(self.pdf, norm=name)
 
     def AddOverallSys(self, name, uncertainty_down, uncertainty_up, scheme=1.):
-        self.nps[name] = {'nom':math.fabs(uncertainty_up-uncertainty_down),'range':(0,100)}
-        print "adding np", name, self.nps[name]
+        self.nps[name] = {'nom':math.fabs(uncertainty_up-uncertainty_down),'range':(-50,50)}
         self.pdf = OverallSys(
             self.pdf, name, uncertainty_up, uncertainty_down, scheme
+        )
+
+    def AddHistoSys(self, name, uncertainty_down, uncertainty_up, scheme=1.):
+        self.nps[name] = {'nom':math.fabs(sum(uncertainty_down)-sum(uncertainty_up)),'range':(-50,50)}
+        assert len(uncertainty_down) == len(uncertainty_up) == len(self.bincontent)
+        self.pdf = HistoSys(
+            self.pdf, name, self.bincontent, uncertainty_up, uncertainty_down, scheme
         )

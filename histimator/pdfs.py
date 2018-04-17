@@ -1,3 +1,4 @@
+from __future__ import division
 import numpy as np
 from .util import MinimalFuncCode, FakeFuncCode
 from iminuit import describe
@@ -86,5 +87,32 @@ class OverallSys:
         alpha = arg[-1]
         inter = Interpolate(self.scheme)
         mod = inter(alpha, 1., self.up, self.down)
+        ana = self.f.integrate(bound, nint, arg[:-1])
+        return mod*ana
+
+class HistoSys:
+    def __init__(self, f, HistoSys='ShapeSys', nom=[1.], down=[1.], up=[1.], scheme=1.):
+        self.f = f
+        self.up = np.asarray(up)/nom
+        self.down = np.asarray(down)/nom
+        self.scheme = scheme
+        if HistoSys in describe(f):
+            raise ValueError(
+                '%s is already taken, please choose another name' % HistoSys
+            )
+        self.func_code = FakeFuncCode(f, append=HistoSys)
+        self.func_defaults = None
+
+    def __call__(self, *arg):
+        fval = self.f(*arg[:-1])
+        alpha = arg[-1]
+        inter = Interpolate(self.scheme)
+        scale = inter(alpha, 1., self.up[int(arg[0]-0.5)], self.down[int(arg[0]-0.5)])
+        return fval *scale 
+        
+    def integrate(self, bound, nint, *arg):
+        alpha = arg[-1]
+        inter = Interpolate(self.scheme)
+        mod = inter(alpha, 1., self.up[arg[0]], self.down[arg[0]])
         ana = self.f.integrate(bound, nint, arg[:-1])
         return mod*ana

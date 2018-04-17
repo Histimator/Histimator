@@ -8,6 +8,7 @@
 
 import numpy as np
 import scipy.stats as st
+import math
 import models
 from scipy.stats import poisson
 from .util import FakeFuncCode
@@ -64,12 +65,9 @@ class BinnedLH(object):
         for par in parameters.keys():
             if "syst" in par.lower():
                 constraints.append(parameters[par])
-        constraint = st.norm(np.asarray(constraints),1).logpdf(1).sum()
-#        new_constraint = st.norm(np.asarray(constraints),1,1)
+        constraint = st.norm(0.,1).pdf(np.asarray(constraints)).prod()
         if constraint <= 0. or isNaN(constraint) : 
             constraint = 0.
-#        else:
-#            print "constraint at {} is {}".format(arg,constraint)
         h_meas = self.h
         if self.extended:
             return -st.poisson.logpmf(self.N, h_pred.sum())-poisson.logpmf(h_meas, h_pred).sum() - constraint
