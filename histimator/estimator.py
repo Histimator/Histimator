@@ -70,7 +70,7 @@ class BinnedLH(object):
             constraint = 0.
         h_meas = self.h
         if self.extended:
-            return -st.poisson.logpmf(self.N, h_pred.sum())-poisson.logpmf(h_meas, h_pred).sum() - constraint
+            return -st.poisson.logpmf(self.N, h_pred.sum())-poisson.logpmf(h_meas, h_pred).sum() - math.log(constraint)
         else:
             return -poisson.logpmf(h_meas, h_pred).sum() - constraint
 
