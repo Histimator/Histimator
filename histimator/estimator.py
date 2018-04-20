@@ -57,7 +57,7 @@ class BinnedLH(object):
 
     def __call__(self, *arg):
         constraint = 0.
-        h_pred = self.evaluatePDF(*arg)
+        h_pred = self.pdf.evaluatePdf(*arg)
         parameters = dict(zip(describe(self.pdf)[1:],arg))
         constraints = []
         for par in parameters.keys():

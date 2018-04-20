@@ -1,6 +1,6 @@
 from __future__ import division
 import numpy as np
-from .util import MinimalFuncCode, FakeFuncCode, merge_func_code
+from .util import MinimalFuncCode, FakeFuncCode, merge_func_code, mask_component_args, rename
 from iminuit import describe
 from interpolation import Interpolate
 
@@ -51,6 +51,11 @@ class NormedHist:
         self.func_code = FakeFuncCode(f, append=norm)
         self.func_defaults = None
 
+        try:
+            self.binedges = self.f.binedges
+        except AttributeError:
+            self.binedges = None
+
     def __call__(self, *arg):
         N = arg[-1]
         fval = self.f(arg[0])
@@ -74,6 +79,12 @@ class OverallSys:
             )
         self.func_code = FakeFuncCode(f, append=OverallSys)
         self.func_defaults = None
+
+        try:
+            self.binedges = self.f.binedges
+        except AttributeError:
+            self.binedges = None
+
 
     def __call__(self, *arg):
         fval = self.f(*arg[:-1])
@@ -99,6 +110,11 @@ class HistoSys:
             raise ValueError(
                 '%s is already taken, please choose another name' % HistoSys
             )
+        try:
+            self.binedges = self.f.binedges
+        except AttributeError:
+            self.binedges = None
+
         self.func_code = FakeFuncCode(f, append=HistoSys)
         self.func_defaults = None
 
@@ -121,8 +137,11 @@ class HistiAddPdf:
         allf = list(arg)
         self.func_code, allpos = merge_func_code(*arg)
         funcpos = allpos[:len(arg)]
-        print 'funcpos',funcpos
-
+        for func in arg:
+            try:
+                self.binedges = func.binedges
+            except AttributeError:
+                print "One of these functions ({}) isn't binned",func.name
         self.func_defaults=None
         self.arglen = self.func_code.co_argcount
         self.allf = arg # f function
@@ -144,9 +163,54 @@ class HistiAddPdf:
             ret += tmp
         return ret
 
+    def evaluatePdf(self, *arg):
+        bwidth = np.diff(self.binedges)
+        centre = self.binedges[:-1] + bwidth/2.0
+        h_pred = np.asarray([self.__call__(centre[i], *arg) for i in range(bwidth.shape[0])]) * bwidth
+        return h_pred
 
-def mask_component_args(fpos, *arg):
-    tmparg = []
-    for pos in fpos:
-        tmparg.append(arg[pos])
-    return tuple(tmparg)
+class HistiCombPdf:
+    def __init__(self, *arg):
+        allf = list(arg)
+        self.binedges = [func.binedges for func in arg if hasattr(func,'binedges')]
+        region_number = 0
+        for a in allf: print 'args are', describe(a)
+        for func in arg:
+            if 'x' in describe(func): 
+                allf[region_number] = rename(func, ['region_{}'.format(region_number)]+describe(func)[1:])
+                region_number += 1
+        for a in allf: print 'args become', describe(a)
+        self.func_code, allpos = merge_func_code(*tuple(allf))
+        funcpos = allpos[:len(arg)]
+        self.func_defaults=None
+        self.arglen = self.func_code.co_argcount
+        self.allf = allf # f function
+        self.allpos = allpos # position for f arg
+        self.numf = len(self.allf)
+        self.argcache = [None]*self.numf
+        self.cache = np.zeros(self.numf)
+        self.hit = 0
+
+    def __call__(self, *arg):
+        ret = []
+        for i in range(self.numf):
+            thispos = self.allpos[i]
+            this_arg = mask_component_args(thispos, *arg)
+            tmp = self.allf[i](*this_arg)
+            self.argcache[i]=this_arg
+            self.cache[i]=tmp
+            print 'arg {} is {}'.format(i,tmp)
+            ret.append( tmp )
+        return tuple(ret)
+
+    def evaluatePdf(self, *arg):
+        h_pred = np.asarray([])
+        for region in range(self.numf):
+            thispos = self.allpos[region]
+#            this_arg = mask_component_args(thispos, *arg)
+#            print 'this arg has value', this_arg, describe(self.allf[i])
+            bwidth = np.diff(self.binedges[region])
+            print 'bin width is', bwidth
+            centre = self.binedges[region][:-1] + bwidth/2.0
+            h_pred = np.hstack([h_pred, np.asarray([self.allf[region](centre[i], *arg) for i in range(bwidth.shape[0])])*bwidth])
+        return h_pred
