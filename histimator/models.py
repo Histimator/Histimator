@@ -1,6 +1,6 @@
-from pdfs import HistogramPdf, NormedHist, OverallSys
+from pdfs import HistogramPdf, NormedHist, OverallSys, HistoSys
 from probfit import AddPdf
-
+import math
 
 class HistiModel(object):
     def __init__(self, name='TemplateModel'):
@@ -11,7 +11,8 @@ class HistiModel(object):
         self.data = None
         self.binedges = None
         self.pois = {}
-        self.nps = []
+        self.nps = {}
+
     def AddChannel(self, channel):
         name = channel.name
         if name is None:
@@ -22,22 +23,35 @@ class HistiModel(object):
             s = channel.samples[sample]
             for poi in s.pois:
                 self.pois[poi] = s.pois[poi]
-            self.nps.append(s.nps)
+            for np in s.nps:
+                self.nps[np] = s.nps[np]
             if self.pdf is None:
                 self.pdf = s.pdf
                 self.binedges = s.binedges
             else:
                 self.pdf = AddPdf(self.pdf, s.pdf)
         self.data = channel.data
+
     def Parameters(self):
-        parameters = {'errordef':1}
+        parameters = {'errordef': 1}
         for param in self.pois:
             name = param
             param = self.pois[param]
             parameters[name] = param['nom']
             parameters['limit_{}'.format(name)] = param['range']
-            parameters['error_{}'.format(name)] = (param['range'][1]-param['range'][0])/2.
+#            parameters['error_{}'.format(name)] = (
+#                param['range'][1]-param['range'][0]
+#            )/2.
+        for np in self.nps:
+            name = np
+            np = self.nps[np]
+            parameters[name] = np['nom']
+            parameters['limit_{}'.format(name)] = np['range']
+#            parameters['error_{}'.format(name)] = (
+#                np['range'][1]-np['range'][0]
+#            )/2.
         return parameters
+
 
 class HistiChannel(object):
     def __init__(self, name=None):
@@ -61,19 +75,26 @@ class HistiSample(object):
     def __init__(self, name=None):
         self.name = name
         self.pois = {}
-        self.nps = []
+        self.nps = {}
+
     def SetHisto(self, hist):
         self.hist = hist
         self.bincontent, self.binedges = self.hist
         self.pdf = HistogramPdf(self.bincontent, self.binedges)
 
     def AddNorm(self, name='mu', nom=1, min=0, max=3):
-        
-        self.pois[name] = { 'nom':nom, 'range':(0,3) }
+        self.pois[name] = {'nom': nom, 'range': (min, max)}
         self.pdf = NormedHist(self.pdf, norm=name)
 
     def AddOverallSys(self, name, uncertainty_down, uncertainty_up, scheme=1.):
-        self.nps.append(name)
+        self.nps[name] = {'nom':math.fabs(uncertainty_up-uncertainty_down),'range':(-50,50)}
         self.pdf = OverallSys(
             self.pdf, name, uncertainty_up, uncertainty_down, scheme
+        )
+
+    def AddHistoSys(self, name, uncertainty_down, uncertainty_up, scheme=1.):
+        self.nps[name] = {'nom':math.fabs(sum(uncertainty_down)-sum(uncertainty_up)),'range':(-50,50)}
+        assert len(uncertainty_down) == len(uncertainty_up) == len(self.bincontent)
+        self.pdf = HistoSys(
+            self.pdf, name, self.bincontent, uncertainty_up, uncertainty_down, scheme
         )
