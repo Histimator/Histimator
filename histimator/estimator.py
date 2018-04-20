@@ -1,9 +1,18 @@
+"""Built-in estimator classes.
+"""
+
+# from . import backend as K
+# if K.backend() == 'tensorflow':
+# import tensorflow as tf
+
+
 import numpy as np
 import scipy.stats as st
 import models
 from scipy.stats import poisson
-from util import FakeFuncCode
-
+from .util import FakeFuncCode
+from iminuit import describe
+from iminuit.util import make_func_code
 
 class BinnedLH(object):
     def __init__(self, model, data=None, bins=40, weights=None,
@@ -14,6 +23,7 @@ class BinnedLH(object):
             self.pdf = model.pdf
             self.binedges = model.binedges
             self.func_code = FakeFuncCode(self.pdf, dock=True)
+            self.parameters = model.Parameters()
         else:
             print "ERROR model should be an instance of HistiModels"
 
@@ -35,28 +45,32 @@ class BinnedLH(object):
         else:
             self.bound = bound
         self.mymin, self.mymax = bound
+        pdf_sig = describe(self.pdf)
+        self.func_code = make_func_code(pdf_sig[1:])
+        self.func_defaults = None
 
-    def __call__(self, *arg):
-        self.params = arg[1:]
+    def evaluatePDF(self, *arg):
         bwidth = np.diff(self.binedges)
         centre = self.binedges[:-1] + bwidth/2.0
+        h_pred = np.asarray([self.pdf(centre[i], *arg) for i in range(bwidth.shape[0])]) * bwidth
+        return h_pred
+
+    def __call__(self, *arg):
+        constraint = 0.
+        h_pred = self.evaluatePDF(*arg)
+        parameters = dict(zip(describe(self.pdf)[1:],arg))
+        constraints = []
+        for par in parameters.keys():
+            if "syst" in par.lower():
+                constraints.append(parameters[par])
+        constraint = st.norm(0.,1).pdf(np.asarray(constraints)).prod()
+        if constraint <= 0. or isNaN(constraint) : 
+            constraint = 0.
         h_meas = self.h
-        h_pred = np.asarray(
-            [self.pdf(centre[i], self.params) for i in range(bwidth.shape[0])]
-        )
-        h_pred = h_pred*bwidth
         if self.extended:
-            return -st.poisson.logpmf(self.N, h_pred.sum())-poisson.logpmf(h_meas, h_pred).sum()
+            return -st.poisson.logpmf(self.N, h_pred.sum())-poisson.logpmf(h_meas, h_pred).sum() - np.log(constraint)
         else:
-            return -poisson.logpmf(h_meas, h_pred).sum()
+            return -poisson.logpmf(h_meas, h_pred).sum() - constraint
 
-
-class BinnedLHProfile(BinnedLH):
-    def __init__(self, model, data=None, bins=40, weights=None,
-                 weighterrors=None, bound=None,
-                 badvalue=1000000, extended=False,
-                 use_w2=False, nint_subdiv=1):
-        if isinstance(model, models.HistiModel):
-            self.pdf = model.pdf
-            self.binedges = model.binedges
-            self.func_code = FakeFuncCode(self.pdf, dock=True)
+def isNaN(num):
+    return num != num
