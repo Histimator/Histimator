@@ -1,5 +1,5 @@
-from pdfs import HistogramPdf, NormedHist, OverallSys, HistoSys, HistiAddPdf
-#from probfit import AddPdf
+from pdfs import HistogramPdf, NormedHist, OverallSys, HistoSys, HistiAddPdf, HistiCombPdf
+import numpy as np
 import math
 
 class HistiModel(object):
@@ -8,7 +8,7 @@ class HistiModel(object):
         self.n_channels = 0
         self.channels = []
         self.pdf = None
-        self.data = None
+        self.data = []
         self.binedges = None
         self.pois = {}
         self.nps = {}
@@ -19,19 +19,17 @@ class HistiModel(object):
             name = 'channel_'+self.n_channels
         self.n_channels += 1
         self.channels.append(name)
-        for sample in channel.samples:
-            s = channel.samples[sample]
-            for poi in s.pois:
-                self.pois[poi] = s.pois[poi]
-            for nuis in s.nps:
-                self.nps[nuis] = s.nps[nuis]
-            if self.pdf is None:
-                self.pdf = s.pdf
-                self.binedges = s.binedges
-            else:
-                self.pdf = HistiAddPdf(self.pdf, s.pdf)
-        self.data = channel.data
-
+        if self.pdf:
+            self.pdf = HistiCombPdf(self.pdf, channel.pdf)
+            self.data = np.hstack([self.data, channel.data])
+        else:
+            self.pdf = channel.pdf
+            self.data = channel.data
+        for poi in channel.pois:
+            self.pois[poi] = channel.pois[poi]
+        for nuis in channel.nps:
+            self.nps[nuis] = channel.nps[nuis]
+        
     def Parameters(self):
         parameters = {'errordef': 1}
         for param in self.pois:
@@ -58,7 +56,10 @@ class HistiChannel(object):
         self.name = name
         self.n_samples = 0
         self.samples = {}
+        self.pois = {}
+        self.nps = {}
         self.data = None
+        self.pdf = None
 
     def AddSample(self, sample):
         name = sample.name
@@ -66,9 +67,19 @@ class HistiChannel(object):
             name = 'sample_'+self.n_samples
         self.n_samples += 1
         self.samples[sample.name] = sample
+        for poi in sample.pois:
+            self.pois[poi] = sample.pois[poi]
+        for nuis in sample.nps:
+            self.nps[nuis] = sample.nps[nuis]
+
+        if self.pdf is None:
+            self.pdf = sample.pdf
+            self.binedges = sample.binedges
+        else:
+            self.pdf = HistiAddPdf(self.pdf, sample.pdf)
 
     def SetData(self, data):
-        self.data = data
+        self.data = np.asarray(data)
 
 
 class HistiSample(object):

@@ -41,10 +41,10 @@ class BinnedLH(object):
         self.use_w2 = use_w2
         self.extended = extended
         if bound is None:
-            self.bound = min(data), max(data)
+            self.bound = (self.data[0],self.data[-2])
         else:
             self.bound = bound
-        self.mymin, self.mymax = bound
+        self.mymin, self.mymax = self.bound
         pdf_sig = describe(self.pdf)
         self.func_code = make_func_code(pdf_sig[1:])
         self.func_defaults = None
@@ -58,7 +58,7 @@ class BinnedLH(object):
     def __call__(self, *arg):
         constraint = 0.
         h_pred = self.pdf.evaluatePdf(*arg)
-        parameters = dict(zip(describe(self.pdf)[1:],arg))
+        parameters = dict(zip(describe(self.pdf.evaluatePdf)[1:],arg))
         constraints = []
         for par in parameters.keys():
             if "syst" in par.lower():

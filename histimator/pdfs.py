@@ -174,12 +174,10 @@ class HistiCombPdf:
         allf = list(arg)
         self.binedges = [func.binedges for func in arg if hasattr(func,'binedges')]
         region_number = 0
-        for a in allf: print 'args are', describe(a)
         for func in arg:
-            if 'x' in describe(func): 
+            if 'x' in describe(func) or 'region_' in describe(func): 
                 allf[region_number] = rename(func, ['region_{}'.format(region_number)]+describe(func)[1:])
                 region_number += 1
-        for a in allf: print 'args become', describe(a)
         self.func_code, allpos = merge_func_code(*tuple(allf))
         funcpos = allpos[:len(arg)]
         self.func_defaults=None
@@ -199,18 +197,28 @@ class HistiCombPdf:
             tmp = self.allf[i](*this_arg)
             self.argcache[i]=this_arg
             self.cache[i]=tmp
-            print 'arg {} is {}'.format(i,tmp)
             ret.append( tmp )
         return tuple(ret)
+
+#    def evaluatePdf(self, *arg):
+#        binwidths = [np.diff(edges) for edges in self.binedges]
+#        centers = []
+#        hists = []
+#        for i in range(self.numf):
+#            hists.append([])
+#            centers.append(self.binedges[i][:-1] + binwidths[i]/2)
+#        for i in range(self.numf):
+#            for j in range(binwidths[i].shape[0]):
+#                hists[i].append(centers[i][j])
+#        print hists
 
     def evaluatePdf(self, *arg):
         h_pred = np.asarray([])
         for region in range(self.numf):
             thispos = self.allpos[region]
 #            this_arg = mask_component_args(thispos, *arg)
-#            print 'this arg has value', this_arg, describe(self.allf[i])
             bwidth = np.diff(self.binedges[region])
-            print 'bin width is', bwidth
             centre = self.binedges[region][:-1] + bwidth/2.0
             h_pred = np.hstack([h_pred, np.asarray([self.allf[region](centre[i], *arg) for i in range(bwidth.shape[0])])*bwidth])
         return h_pred
+
