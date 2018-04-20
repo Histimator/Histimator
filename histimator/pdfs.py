@@ -63,7 +63,7 @@ class NormedHist:
 
 
 class OverallSys:
-    def __init__(self, f, OverallSys='NormSys', up=1., down=1., scheme=1.):
+    def __init__(self, f, OverallSys='NormSys', down=1., up=1., scheme=1.):
         self.f = f
         self.up = up
         self.down = down

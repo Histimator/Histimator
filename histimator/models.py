@@ -23,8 +23,8 @@ class HistiModel(object):
             s = channel.samples[sample]
             for poi in s.pois:
                 self.pois[poi] = s.pois[poi]
-            for np in s.nps:
-                self.nps[np] = s.nps[np]
+            for nuis in s.nps:
+                self.nps[nuis] = s.nps[nuis]
             if self.pdf is None:
                 self.pdf = s.pdf
                 self.binedges = s.binedges
@@ -42,13 +42,13 @@ class HistiModel(object):
 #            parameters['error_{}'.format(name)] = (
 #                param['range'][1]-param['range'][0]
 #            )/2.
-        for np in self.nps:
-            name = np
-            np = self.nps[np]
-            parameters[name] = np['nom']
-            parameters['limit_{}'.format(name)] = np['range']
+        for nuis in self.nps:
+            name = nuis
+            nuis = self.nps[nuis]
+            parameters[name] = nuis['nom']
+            parameters['limit_{}'.format(name)] = nuis['range']
 #            parameters['error_{}'.format(name)] = (
-#                np['range'][1]-np['range'][0]
+#                nuis['range'][1]-nuis['range'][0]
 #            )/2.
         return parameters
 
