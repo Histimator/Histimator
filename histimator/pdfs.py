@@ -1,6 +1,6 @@
 from __future__ import division
 import numpy as np
-from .util import MinimalFuncCode, FakeFuncCode
+from .util import MinimalFuncCode, FakeFuncCode, merge_func_code
 from iminuit import describe
 from interpolation import Interpolate
 
@@ -40,7 +40,6 @@ class HistogramPdf(object):
             return self.hy[i-1]
         else:
             return 0.0
-
 
 class NormedHist:
     def __init__(self, f, norm='N'):
@@ -116,3 +115,38 @@ class HistoSys:
         mod = inter(alpha, 1., self.up[arg[0]], self.down[arg[0]])
         ana = self.f.integrate(bound, nint, arg[:-1])
         return mod*ana
+
+class HistiAddPdf:
+    def __init__(self, *arg):
+        allf = list(arg)
+        self.func_code, allpos = merge_func_code(*arg)
+        funcpos = allpos[:len(arg)]
+        print 'funcpos',funcpos
+
+        self.func_defaults=None
+        self.arglen = self.func_code.co_argcount
+        self.allf = arg # f function
+        self.allpos = allpos # position for f arg
+        self.numf = len(self.allf)
+        self.argcache = [None]*self.numf
+        self.cache = np.zeros(self.numf)
+        self.hit = 0
+
+    def __call__(self, *arg):
+        ret = 0.
+        for i in range(self.numf):
+            thispos = self.allpos[i]
+            this_arg = mask_component_args(thispos, *arg)
+            tmp = self.allf[i](*this_arg)
+            self.argcache[i]=this_arg
+            self.cache[i]=tmp
+
+            ret += tmp
+        return ret
+
+
+def mask_component_args(fpos, *arg):
+    tmparg = []
+    for pos in fpos:
+        tmparg.append(arg[pos])
+    return tuple(tmparg)

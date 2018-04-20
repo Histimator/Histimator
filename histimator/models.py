@@ -1,5 +1,5 @@
-from pdfs import HistogramPdf, NormedHist, OverallSys, HistoSys
-from probfit import AddPdf
+from pdfs import HistogramPdf, NormedHist, OverallSys, HistoSys, HistiAddPdf
+#from probfit import AddPdf
 import math
 
 class HistiModel(object):
@@ -29,7 +29,7 @@ class HistiModel(object):
                 self.pdf = s.pdf
                 self.binedges = s.binedges
             else:
-                self.pdf = AddPdf(self.pdf, s.pdf)
+                self.pdf = HistiAddPdf(self.pdf, s.pdf)
         self.data = channel.data
 
     def Parameters(self):
