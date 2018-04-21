@@ -21,10 +21,12 @@ class HistiModel(object):
         self.channels.append(name)
         if self.pdf:
             self.pdf = HistiCombPdf(self.pdf, channel.pdf)
-            self.data = np.hstack([self.data, channel.data])
+            bwidth = np.diff(channel.pdf.binedges)
+            self.data = np.hstack([self.data, channel.data*bwidth])
         else:
             self.pdf = channel.pdf
-            self.data = channel.data
+            bwidth = np.diff(channel.pdf.binedges)
+            self.data = np.asarray(channel.data)*bwidth
         for poi in channel.pois:
             self.pois[poi] = channel.pois[poi]
         for nuis in channel.nps:

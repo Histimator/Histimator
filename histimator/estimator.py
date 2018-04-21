@@ -49,12 +49,6 @@ class BinnedLH(object):
         self.func_code = make_func_code(pdf_sig[1:])
         self.func_defaults = None
 
-    def evaluatePDF(self, *arg):
-        bwidth = np.diff(self.binedges)
-        centre = self.binedges[:-1] + bwidth/2.0
-        h_pred = np.asarray([self.pdf(centre[i], *arg) for i in range(bwidth.shape[0])]) * bwidth
-        return h_pred
-
     def __call__(self, *arg):
         constraint = 0.
         h_pred = self.pdf.evaluatePdf(*arg)
