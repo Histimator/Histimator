@@ -199,7 +199,6 @@ class HistiCombPdf:
                         allf.append(f)
                 else:
                     allf.append(func)
-            funci+=1
         self.func_code, allpos = merge_func_code(*tuple(allf))
         funcpos = allpos[:len(arg)]
         self.func_defaults=None
