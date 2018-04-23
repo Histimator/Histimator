@@ -62,6 +62,7 @@ class HistiChannel(object):
         self.nps = {}
         self.data = None
         self.pdf = None
+        self.binedges = None
 
     def AddSample(self, sample):
         name = sample.name
@@ -79,7 +80,6 @@ class HistiChannel(object):
             self.binedges = sample.binedges
         else:
             self.pdf = HistiAddPdf(self.pdf, sample.pdf)
-
     def SetData(self, data):
         self.data = np.asarray(data)
 
@@ -93,20 +93,20 @@ class HistiSample(object):
     def SetHisto(self, hist):
         self.hist = hist
         self.bincontent, self.binedges = self.hist
-        self.pdf = HistogramPdf(self.bincontent, self.binedges)
+        self.pdf = HistogramPdf(self.bincontent, np.asarray(self.binedges))
 
     def AddNorm(self, name='mu', nom=1, min=0, max=3):
         self.pois[name] = {'nom': nom, 'range': (min, max)}
         self.pdf = NormedHist(self.pdf, norm=name)
 
     def AddOverallSys(self, name, uncertainty_down, uncertainty_up, scheme=1.):
-        self.nps[name] = {'nom':math.fabs(uncertainty_up-uncertainty_down),'range':(-50,50)}
+        self.nps[name] = {'nom':math.fabs(uncertainty_up-uncertainty_down),'range':(-3,3)}
         self.pdf = OverallSys(
             self.pdf, name, uncertainty_down, uncertainty_up, scheme
         )
 
     def AddHistoSys(self, name, uncertainty_down, uncertainty_up, scheme=1.):
-        self.nps[name] = {'nom':math.fabs(sum(uncertainty_down)-sum(uncertainty_up)),'range':(-50,50)}
+        self.nps[name] = {'nom':math.fabs(sum(uncertainty_down)-sum(uncertainty_up)),'range':(-3,3)}
         assert len(uncertainty_down) == len(uncertainty_up) == len(self.bincontent)
         self.pdf = HistoSys(
             self.pdf, name, self.bincontent, uncertainty_down, uncertainty_up, scheme
