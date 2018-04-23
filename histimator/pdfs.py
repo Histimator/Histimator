@@ -199,6 +199,8 @@ class HistiCombPdf:
                         allf.append(f)
                 else:
                     allf.append(func)
+            else:
+                allf.append(func)
         self.func_code, allpos = merge_func_code(*tuple(allf))
         funcpos = allpos[:len(arg)]
         self.func_defaults=None
@@ -213,6 +215,7 @@ class HistiCombPdf:
     def __call__(self, *arg):
         ret = []
         for i in range(self.numf):
+            print 'this func', i, 'with bins', self.binedges
             thispos = self.allpos[i]
             this_arg = mask_component_args(thispos, *arg)
             tmp = self.allf[i](*this_arg)
@@ -227,8 +230,6 @@ class HistiCombPdf:
         for region in range(self.numf):
             bwidth = np.diff(self.binedges[region])
             centre = self.binedges[region][:-1] + bwidth/2.0
-            print 'in region ',region,'of',self.numf, 'bwidth', bwidth.shape,'of', len(self.binedges)
             h_new = [self.allf[region](centre[i], *arg) for i in range(bwidth.shape[0])]
-            print 'shape of h_new', np.asarray(h_new), 'and',bwidth.shape
             h_pred = np.hstack([h_pred, h_new])
         return h_pred
