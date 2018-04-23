@@ -90,13 +90,13 @@ class OverallSys:
         fval = self.f(*arg[:-1])
         alpha = arg[-1]
         inter = Interpolate(self.scheme)
-        scale = inter(alpha, 1., self.up, self.down)
+        scale = inter(alpha, 1., self.down, self.up)
         return fval *scale 
         
     def integrate(self, bound, nint, *arg):
         alpha = arg[-1]
         inter = Interpolate(self.scheme)
-        mod = inter(alpha, 1., self.up, self.down)
+        mod = inter(alpha, 1., self.down, self.up)
         ana = self.f.integrate(bound, nint, arg[:-1])
         return mod*ana
 
@@ -122,13 +122,13 @@ class HistoSys:
         fval = self.f(*arg[:-1])
         alpha = arg[-1]
         inter = Interpolate(self.scheme)
-        scale = inter(alpha, 1., self.up[int(arg[0]-0.5)], self.down[int(arg[0]-0.5)])
+        scale = inter(alpha, 1., self.down[int(arg[0]-0.5)], self.up[int(arg[0]-0.5)])
         return fval *scale 
         
     def integrate(self, bound, nint, *arg):
         alpha = arg[-1]
         inter = Interpolate(self.scheme)
-        mod = inter(alpha, 1., self.up[arg[0]], self.down[arg[0]])
+        mod = inter(alpha, 1., self.down[arg[0]], self.up[arg[0]])
         ana = self.f.integrate(bound, nint, arg[:-1])
         return mod*ana
 
