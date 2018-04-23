@@ -57,12 +57,12 @@ class BinnedLH(object):
         for par in parameters.keys():
             if "syst" in par.lower():
                 constraints.append(parameters[par])
-        constraint = st.norm(0.,1).pdf(np.asarray(constraints)).prod()
+        constraint = st.norm(1.,1.).logpdf(np.asarray(constraints)).prod()
         if constraint <= 0. or isNaN(constraint) : 
             constraint = 0.
         h_meas = self.h
         if self.extended:
-            return -st.poisson.logpmf(self.N, h_pred.sum())-poisson.logpmf(h_meas, h_pred).sum() - np.log(constraint)
+            return -st.poisson.logpmf(self.N, h_pred.sum())-poisson.logpmf(h_meas, h_pred).sum() - constraint
         else:
             return -poisson.logpmf(h_meas, h_pred).sum() - constraint
 

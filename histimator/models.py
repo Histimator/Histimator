@@ -100,13 +100,13 @@ class HistiSample(object):
         self.pdf = NormedHist(self.pdf, norm=name)
 
     def AddOverallSys(self, name, uncertainty_down, uncertainty_up, scheme=1.):
-        self.nps[name] = {'nom':math.fabs(uncertainty_up-uncertainty_down),'range':(-3,3)}
+        self.nps[name] = {'nom':math.fabs(uncertainty_up-uncertainty_down),'range':(-5,5)}
         self.pdf = OverallSys(
             self.pdf, name, uncertainty_down, uncertainty_up, scheme
         )
 
     def AddHistoSys(self, name, uncertainty_down, uncertainty_up, scheme=1.):
-        self.nps[name] = {'nom':math.fabs(sum(uncertainty_down)-sum(uncertainty_up)),'range':(-3,3)}
+        self.nps[name] = {'nom':math.fabs(sum(uncertainty_down)-sum(uncertainty_up)),'range':(-5,5)}
         assert len(uncertainty_down) == len(uncertainty_up) == len(self.bincontent)
         self.pdf = HistoSys(
             self.pdf, name, self.bincontent, uncertainty_down, uncertainty_up, scheme
