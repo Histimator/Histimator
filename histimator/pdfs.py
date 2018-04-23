@@ -90,13 +90,13 @@ class OverallSys:
         fval = self.f(*arg[:-1])
         alpha = arg[-1]
         inter = Interpolate(self.scheme)
-        scale = inter(alpha, 1., self.up, self.down)
+        scale = inter(alpha, 1., self.down, self.up)
         return fval *scale 
         
     def integrate(self, bound, nint, *arg):
         alpha = arg[-1]
         inter = Interpolate(self.scheme)
-        mod = inter(alpha, 1., self.up, self.down)
+        mod = inter(alpha, 1., self.down, self.up)
         ana = self.f.integrate(bound, nint, arg[:-1])
         return mod*ana
 
@@ -122,13 +122,13 @@ class HistoSys:
         fval = self.f(*arg[:-1])
         alpha = arg[-1]
         inter = Interpolate(self.scheme)
-        scale = inter(alpha, 1., self.up[int(arg[0]-0.5)], self.down[int(arg[0]-0.5)])
+        scale = inter(alpha, 1., self.down[int(arg[0]-0.5)], self.up[int(arg[0]-0.5)])
         return fval *scale 
         
     def integrate(self, bound, nint, *arg):
         alpha = arg[-1]
         inter = Interpolate(self.scheme)
-        mod = inter(alpha, 1., self.up[arg[0]], self.down[arg[0]])
+        mod = inter(alpha, 1., self.down[arg[0]], self.up[arg[0]])
         ana = self.f.integrate(bound, nint, arg[:-1])
         return mod*ana
 
@@ -171,9 +171,35 @@ class HistiAddPdf:
 
 class HistiCombPdf:
     def __init__(self, *arg):
-        allf = list(arg)
-        self.binedges = [func.binedges for func in arg if hasattr(func,'binedges')]
-        region_number = 0
+        allf = []
+        self.binedges = []
+
+        ### Needs major cleanup using Numpy.reshape incase one of 
+        ### the functions is already a HistiCombPdf 
+        ### points:
+        ### 
+        ### a) bin edges are already list of numpy arrays
+        ### b) functions already have a list of component functions
+        ###                 ( whereas in AddPdf they are a tuple )
+        ### 
+        ### in point b) this manifests as having two returns when 
+        ## evaluating and therefore the wrong shape. (2,n) vs (n,)
+
+        for func in arg:
+            if hasattr(func, 'binedges'):
+                if isinstance(func.binedges, list):
+                    for sub in func.binedges:
+                        self.binedges.append(sub)
+                else:
+                    self.binedges.append(func.binedges)
+
+            if hasattr(func, 'allf'):
+                if isinstance(func.allf, list):
+                    for f in func.allf:
+                        allf.append(f)
+                else:
+                    allf.append(func)
+            funci+=1
         self.func_code, allpos = merge_func_code(*tuple(allf))
         funcpos = allpos[:len(arg)]
         self.func_defaults=None
@@ -196,24 +222,14 @@ class HistiCombPdf:
             ret.append( tmp )
         return tuple(ret)
 
-#    def evaluatePdf(self, *arg):
-#        binwidths = [np.diff(edges) for edges in self.binedges]
-#        centers = []
-#        hists = []
-#        for i in range(self.numf):
-#            hists.append([])
-#            centers.append(self.binedges[i][:-1] + binwidths[i]/2)
-#        for i in range(self.numf):
-#            for j in range(binwidths[i].shape[0]):
-#                hists[i].append(centers[i][j])
-#        print hists
-
     def evaluatePdf(self, *arg):
         h_pred = np.asarray([])
         binwidths = [np.diff(edges) for edges in self.binedges]
         for region in range(self.numf):
             bwidth = np.diff(self.binedges[region])
             centre = self.binedges[region][:-1] + bwidth/2.0
-            h_pred = np.hstack([h_pred, np.asarray([self.allf[region](centre[i], *arg) for i in range(bwidth.shape[0])])*bwidth])
+            print 'in region ',region,'of',self.numf, 'bwidth', bwidth.shape,'of', len(self.binedges)
+            h_new = [self.allf[region](centre[i], *arg) for i in range(bwidth.shape[0])]
+            print 'shape of h_new', np.asarray(h_new), 'and',bwidth.shape
+            h_pred = np.hstack([h_pred, h_new])
         return h_pred
-
