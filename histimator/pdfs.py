@@ -172,11 +172,21 @@ class HistiAddPdf:
 class HistiCombPdf:
     def __init__(self, *arg):
         allf = []
-        funci = 0
         self.binedges = []
+
+        ### Needs major cleanup using Numpy.reshape incase one of 
+        ### the functions is already a HistiCombPdf 
+        ### points:
+        ### 
+        ### a) bin edges are already list of numpy arrays
+        ### b) functions already have a list of component functions
+        ###                 ( whereas in AddPdf they are a tuple )
+        ### 
+        ### in point b) this manifests as having two returns when 
+        ## evaluating and therefore the wrong shape. (2,n) vs (n,)
+
         for func in arg:
             if hasattr(func, 'binedges'):
-                print 'bin edges in function ',funci, 'are,',func.binedges
                 if isinstance(func.binedges, list):
                     for sub in func.binedges:
                         self.binedges.append(sub)
@@ -190,8 +200,6 @@ class HistiCombPdf:
                 else:
                     allf.append(func)
             funci+=1
-#        self.binedges = [func.binedges for func in arg if hasattr(func,'binedges')]
-        print 'bin edges are', self.binedges
         self.func_code, allpos = merge_func_code(*tuple(allf))
         funcpos = allpos[:len(arg)]
         self.func_defaults=None
