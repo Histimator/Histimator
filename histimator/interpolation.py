@@ -1,5 +1,5 @@
 
-def PolyInterpValue(alpha, I0, Iup, Idown, alpha0 = 0):
+def PolyInterpValue(alpha, I0, Idown, Iup, alpha0 = 0):
     polycoeff = np.zeros(6)
     pow_up       =  pow(Iup/I0, alpha0)
     pow_down     =  pow(Idown/I0,  alpha0)
@@ -30,28 +30,28 @@ def PolyInterpValue(alpha, I0, Iup, Idown, alpha0 = 0):
 class Interpolate(object):
     def __init__(self, scheme):
         self.scheme = scheme
-    def __call__(self, alpha, I0, Iup, Idown):
+    def __call__(self, alpha, I0, Idown, Iup):
         if self.scheme == 0:
-            return self.PiecewiseLinear(alpha, I0, Iup, Idown)
+            return self.PiecewiseLinear(alpha, I0, Idown, Iup)
         elif self.scheme == 1:
-            return self.PiecewiseExponential(alpha, I0, Iup, Idown)
+            return self.PiecewiseExponential(alpha, I0, Idown, Iup)
         elif self.scheme == 2:
-            return self.QuadInterLinExtra(alpha, I0, Iup, Idown)
+            return self.QuadInterLinExtra(alpha, I0, Idown, Iup)
         elif self.scheme == 2:
-            return self.PolyInterExpExtra(alpha, I0, Iup, Idown)
+            return self.PolyInterExpExtra(alpha, I0, Idown, Iup)
 
                 
-    def PiecewiseLinear(self, alpha, I0, Iup, Idown):
+    def PiecewiseLinear(self, alpha, I0, Idown, Iup):
         if alpha < 0:
             return (1 + alpha*(I0-Idown))
         else:
             return (1 + alpha*(Iup - I0))
-    def PiecewiseExponential(self, alpha, I0, Iup, Idown):
+    def PiecewiseExponential(self, alpha, I0, Idown, Iup):
         if alpha < 0:
             return pow((Idown / I0),-alpha)
         else:
             return pow((Iup / I0),alpha)
-    def QuadInterLinExtra(alpha, I0, Iup, Idown):
+    def QuadInterLinExtra(alpha, I0, Idown, Iup):
         a = (Iup + Idown)/2. - I0
         b = (Iup - Idown)/2.
         if alpha > 1.:
@@ -61,11 +61,11 @@ class Interpolate(object):
         else:
             return (1. + (a*alpha*alpha + b*alpha))
 
-    def PolyInterExpExtra(alpha, I0, Iup, Idown, alpha0 = 0):
+    def PolyInterExpExtra(alpha, I0, Idown, Iup, alpha0 = 0):
         if alpha >= alpha0 :
             return pow(Iup/I0, alpha)
         elif alpha <= alpha0:
             return pow(Idown/I0, -alpha)
         elif x != 0:
-            return PolyInterpValue(alpha, I0, Iup, Idown, alpha0 = 0)
+            return PolyInterpValue(alpha, I0, Idown, Iup, alpha0 = 0)
 
