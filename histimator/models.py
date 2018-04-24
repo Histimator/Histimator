@@ -32,24 +32,28 @@ class HistiModel(object):
         for nuis in channel.nps:
             self.nps[nuis] = channel.nps[nuis]
         
-    def Parameters(self):
-        parameters = {'errordef': 1}
-        for param in self.pois:
-            name = param
-            param = self.pois[param]
-            parameters[name] = param['nom']
-            parameters['limit_{}'.format(name)] = param['range']
-#            parameters['error_{}'.format(name)] = (
-#                param['range'][1]-param['range'][0]
-#            )/2.
-        for nuis in self.nps:
-            name = nuis
-            nuis = self.nps[nuis]
-            parameters[name] = nuis['nom']
-            parameters['limit_{}'.format(name)] = nuis['range']
-#            parameters['error_{}'.format(name)] = (
-#                nuis['range'][1]-nuis['range'][0]
-#            )/2.
+    def Parameters(self, minimiser='minuit'):
+        if minimiser.lower() in 'minuit':
+            parameters = {'errordef': 1}
+            for param in self.pois:
+                name = param
+                param = self.pois[param]
+                parameters[name] = param['nom']
+                parameters['limit_{}'.format(name)] = param['range']
+
+            for nuis in self.nps:
+                name = nuis
+                nuis = self.nps[nuis]
+                parameters[name] = nuis['nom']
+                parameters['limit_{}'.format(name)] = nuis['range']
+        elif minimiser.lower() in 'scipy':
+            parameters = []
+            for param in self.pois:
+                param = self.pois[param]
+                parameters.append(param['nom'])
+            for nuis in self.nps:
+                nuis = self.nps[nuis]
+                parameters.append(nuis['nom'])
         return parameters
 
 
@@ -100,13 +104,13 @@ class HistiSample(object):
         self.pdf = NormedHist(self.pdf, norm=name)
 
     def AddOverallSys(self, name, uncertainty_down, uncertainty_up, scheme=1.):
-        self.nps[name] = {'nom':math.fabs(uncertainty_up-uncertainty_down),'range':(-5,5)}
+        self.nps[name] = {'nom':(np.asarray(uncertainty_up)-np.asarray(uncertainty_down)).mean(),'range':(-5,5)}
         self.pdf = OverallSys(
             self.pdf, name, uncertainty_down, uncertainty_up, scheme
         )
 
     def AddHistoSys(self, name, uncertainty_down, uncertainty_up, scheme=1.):
-        self.nps[name] = {'nom':math.fabs(sum(uncertainty_down)-sum(uncertainty_up)),'range':(-5,5)}
+        self.nps[name] = {'nom':(np.asarray(uncertainty_up)-np.asarray(uncertainty_down)).mean(),'range':(-5,5)}
         assert len(uncertainty_down) == len(uncertainty_up) == len(self.bincontent)
         self.pdf = HistoSys(
             self.pdf, name, self.bincontent, uncertainty_down, uncertainty_up, scheme

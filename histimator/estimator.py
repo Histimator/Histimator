@@ -18,7 +18,7 @@ class BinnedLH(object):
     def __init__(self, model, data=None, bins=40, weights=None,
                  weighterrors=None, bound=None,
                  badvalue=1000000, extended=False,
-                 use_w2=False, nint_subdiv=1):
+                 use_w2=False, nint_subdiv=1, minimiser = 'minuit'):
         if isinstance(model, models.HistiModel):
             self.pdf = model.pdf
             self.binedges = model.binedges
@@ -26,7 +26,7 @@ class BinnedLH(object):
             self.parameters = model.Parameters()
         else:
             print "ERROR model should be an instance of HistiModels"
-
+        self.minimiser = minimiser
         if hasattr(model, "data"):
             self.data = model.data
             if self.data is None:
@@ -50,6 +50,8 @@ class BinnedLH(object):
         self.func_defaults = None
 
     def __call__(self, *arg):
+        if self.minimiser is 'scipy':
+            arg = tuple(arg[0].tolist())
         constraint = 0.
         h_pred = self.pdf.evaluatePdf(*arg)
         parameters = dict(zip(describe(self.pdf.evaluatePdf)[1:],arg))
