@@ -1,5 +1,5 @@
-from pdfs import HistogramPdf, NormedHist, OverallSys, HistoSys, HistiAddPdf
-#from probfit import AddPdf
+from pdfs import HistogramPdf, NormedHist, OverallSys, HistoSys, HistiAddPdf, HistiCombPdf
+import numpy as np
 import math
 
 class HistiModel(object):
@@ -8,7 +8,7 @@ class HistiModel(object):
         self.n_channels = 0
         self.channels = []
         self.pdf = None
-        self.data = None
+        self.data = []
         self.binedges = None
         self.pois = {}
         self.nps = {}
@@ -19,19 +19,19 @@ class HistiModel(object):
             name = 'channel_'+self.n_channels
         self.n_channels += 1
         self.channels.append(name)
-        for sample in channel.samples:
-            s = channel.samples[sample]
-            for poi in s.pois:
-                self.pois[poi] = s.pois[poi]
-            for nuis in s.nps:
-                self.nps[nuis] = s.nps[nuis]
-            if self.pdf is None:
-                self.pdf = s.pdf
-                self.binedges = s.binedges
-            else:
-                self.pdf = HistiAddPdf(self.pdf, s.pdf)
-        self.data = channel.data
-
+        if self.pdf:
+            self.pdf = HistiCombPdf(self.pdf, channel.pdf)
+            bwidth = np.diff(channel.pdf.binedges)
+            self.data = np.hstack([self.data, channel.data*bwidth])
+        else:
+            self.pdf = channel.pdf
+            bwidth = np.diff(channel.pdf.binedges)
+            self.data = np.asarray(channel.data)*bwidth
+        for poi in channel.pois:
+            self.pois[poi] = channel.pois[poi]
+        for nuis in channel.nps:
+            self.nps[nuis] = channel.nps[nuis]
+        
     def Parameters(self):
         parameters = {'errordef': 1}
         for param in self.pois:
@@ -58,7 +58,11 @@ class HistiChannel(object):
         self.name = name
         self.n_samples = 0
         self.samples = {}
+        self.pois = {}
+        self.nps = {}
         self.data = None
+        self.pdf = None
+        self.binedges = None
 
     def AddSample(self, sample):
         name = sample.name
@@ -66,9 +70,18 @@ class HistiChannel(object):
             name = 'sample_'+self.n_samples
         self.n_samples += 1
         self.samples[sample.name] = sample
+        for poi in sample.pois:
+            self.pois[poi] = sample.pois[poi]
+        for nuis in sample.nps:
+            self.nps[nuis] = sample.nps[nuis]
 
+        if self.pdf is None:
+            self.pdf = sample.pdf
+            self.binedges = sample.binedges
+        else:
+            self.pdf = HistiAddPdf(self.pdf, sample.pdf)
     def SetData(self, data):
-        self.data = data
+        self.data = np.asarray(data)
 
 
 class HistiSample(object):
@@ -80,21 +93,21 @@ class HistiSample(object):
     def SetHisto(self, hist):
         self.hist = hist
         self.bincontent, self.binedges = self.hist
-        self.pdf = HistogramPdf(self.bincontent, self.binedges)
+        self.pdf = HistogramPdf(self.bincontent, np.asarray(self.binedges))
 
     def AddNorm(self, name='mu', nom=1, min=0, max=3):
         self.pois[name] = {'nom': nom, 'range': (min, max)}
         self.pdf = NormedHist(self.pdf, norm=name)
 
     def AddOverallSys(self, name, uncertainty_down, uncertainty_up, scheme=1.):
-        self.nps[name] = {'nom':math.fabs(uncertainty_up-uncertainty_down),'range':(-50,50)}
+        self.nps[name] = {'nom':math.fabs(uncertainty_up-uncertainty_down),'range':(-3,3)}
         self.pdf = OverallSys(
-            self.pdf, name, uncertainty_up, uncertainty_down, scheme
+            self.pdf, name, uncertainty_down, uncertainty_up, scheme
         )
 
     def AddHistoSys(self, name, uncertainty_down, uncertainty_up, scheme=1.):
-        self.nps[name] = {'nom':math.fabs(sum(uncertainty_down)-sum(uncertainty_up)),'range':(-50,50)}
+        self.nps[name] = {'nom':math.fabs(sum(uncertainty_down)-sum(uncertainty_up)),'range':(-3,3)}
         assert len(uncertainty_down) == len(uncertainty_up) == len(self.bincontent)
         self.pdf = HistoSys(
-            self.pdf, name, self.bincontent, uncertainty_up, uncertainty_down, scheme
+            self.pdf, name, self.bincontent, uncertainty_down, uncertainty_up, scheme
         )

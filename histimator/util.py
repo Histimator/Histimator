@@ -80,3 +80,22 @@ def merge_func_code(*arg):
             tmp.append(merge_arg.index(v))
         pos.append(np.array(tmp, dtype=np.int))
     return MinimalFuncCode(merge_arg), pos
+
+def mask_component_args(fpos, *arg):
+    tmparg = []
+    for pos in fpos:
+        tmparg.append(arg[pos])
+    return tuple(tmparg)
+
+def rename(f, newarg):
+    return FakeFunc(f, newarg)
+
+class FakeFunc:
+    def __init__(self, f, prmt=None):
+        self.f = f
+        self.func_code = FakeFuncCode(f, prmt)
+        self.func_defaults = getattr(f, 'func_defaults', None)
+        self.__name__ = getattr(f, '__name__', 'unnamed')
+
+    def __call__(self, *arg):
+        return self.f(*arg)
