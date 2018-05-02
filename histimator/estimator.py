@@ -41,7 +41,7 @@ class BinnedLH(object):
         self.use_w2 = use_w2
         self.extended = extended
         if bound is None:
-            self.bound = (self.data[0],self.data[-2])
+            self.bound = (self.data[0],self.data[-1])
         else:
             self.bound = bound
         self.mymin, self.mymax = self.bound

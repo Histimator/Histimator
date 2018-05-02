@@ -215,6 +215,7 @@ class HistiCombPdf:
     def __call__(self, *arg):
         ret = []
         for i in range(self.numf):
+            print 'this func', i, 'with bins', self.binedges
             thispos = self.allpos[i]
             this_arg = mask_component_args(thispos, *arg)
             tmp = self.allf[i](*this_arg)

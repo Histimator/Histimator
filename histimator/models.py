@@ -1,6 +1,5 @@
 from pdfs import HistogramPdf, NormedHist, OverallSys, HistoSys, HistiAddPdf, HistiCombPdf
 import numpy as np
-import math
 
 class HistiModel(object):
     def __init__(self, name='TemplateModel'):
@@ -105,6 +104,7 @@ class HistiSample(object):
 
     def AddOverallSys(self, name, uncertainty_down, uncertainty_up, scheme=1.):
         self.nps[name] = {'nom':(np.asarray(uncertainty_up)-np.asarray(uncertainty_down)).mean(),'range':(-5,5)}
+
         self.pdf = OverallSys(
             self.pdf, name, uncertainty_down, uncertainty_up, scheme
         )
