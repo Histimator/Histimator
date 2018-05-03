@@ -46,7 +46,6 @@ chan.AddSample(signal)
 chan.AddSample(background1)
 #chan.AddSample(background2)
 
-m.AddChannel(chan)
 chan.SetData(data)
 m.AddChannel(chan)
 
@@ -90,7 +89,6 @@ chan.AddSample(signal)
 chan.AddSample(background1)
 #chan.AddSample(background2)
 
-m.AddChannel(chan)
 chan.SetData(data)
 m.AddChannel(chan)
 
