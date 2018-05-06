@@ -1,8 +1,9 @@
 from __future__ import division
 import numpy as np
-from .util import MinimalFuncCode, FakeFuncCode, merge_func_code, mask_component_args, rename
+from .util import MinimalFuncCode, FakeFuncCode
+from .util import merge_func_code, mask_component_args
 from iminuit import describe
-from interpolation import Interpolate
+from .interpolation import Interpolate
 import scipy.special as sp
 from scipy.stats._distn_infrastructure import rv_continuous
 
@@ -145,7 +146,7 @@ class HistiAddPdf:
             try:
                 self.binedges = func.binedges
             except AttributeError:
-                print "One of these functions ({}) isn't binned", func.name
+                print("One of these functions ({}) isn't binned", func.name)
         self.func_defaults = None
         self.arglen = self.func_code.co_argcount
         self.allf = arg # f function
@@ -219,7 +220,7 @@ class HistiCombPdf:
     def __call__(self, *arg):
         ret = []
         for i in range(self.numf):
-            print 'this func', i, 'with bins', self.binedges
+            print('this func', i, 'with bins', self.binedges)
             thispos = self.allpos[i]
             this_arg = mask_component_args(thispos, *arg)
             tmp = self.allf[i](*this_arg)
@@ -242,11 +243,11 @@ class HistiCombPdf:
 class cpoisson_gen(rv_continuous):
     """ Continuous Poisson distribution
     """
-    def _logpmf(self, k, mu):
+    def _logpdf(self, k, mu):
         Pk = np.where(mu > 0, sp.xlogy(k, mu) - sp.gammaln(k+1) - mu, 0)
         return Pk
 
-    def _pmf(self, k, mu):
+    def _pdf(self, k, mu):
         # np.power(mu, n)*np.exp(-mu)/sp.gamma(n+1)
         return np.exp(self._logpmf(k, mu))
 
@@ -255,4 +256,4 @@ class cpoisson_gen(rv_continuous):
         return sp.pdtr(k, mu)
 
 
-cpoisson = cpoisson_gen(name="cpoisson", longname='A continuous Poisson')
+cpoisson = cpoisson_gen(name="cpoisson", longname='A Poisson')

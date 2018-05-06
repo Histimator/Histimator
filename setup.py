@@ -25,8 +25,8 @@ requirements = [
     "PyYAML",
     "numpy",
     "scipy",
-    "iminuit",
-    "probfit"
+    "iminuit"
+    #"probfit"
 ]
 
 setup_requirements = [
