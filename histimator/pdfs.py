@@ -3,6 +3,8 @@ import numpy as np
 from .util import MinimalFuncCode, FakeFuncCode, merge_func_code, mask_component_args, rename
 from iminuit import describe
 from interpolation import Interpolate
+import scipy.special as sp
+from scipy.stats._distn_infrastructure import rv_continuous
 
 
 class HistogramPdf(object):
@@ -40,6 +42,7 @@ class HistogramPdf(object):
             return self.hy[i-1]
         else:
             return 0.0
+
 
 class NormedHist:
     def __init__(self, f, norm='N'):
@@ -85,20 +88,20 @@ class OverallSys:
         except AttributeError:
             self.binedges = None
 
-
     def __call__(self, *arg):
         fval = self.f(*arg[:-1])
         alpha = arg[-1]
         inter = Interpolate(self.scheme)
         scale = inter(alpha, 1., self.down, self.up)
-        return fval *scale 
-        
+        return fval * scale
+
     def integrate(self, bound, nint, *arg):
         alpha = arg[-1]
         inter = Interpolate(self.scheme)
         mod = inter(alpha, 1., self.down, self.up)
         ana = self.f.integrate(bound, nint, arg[:-1])
         return mod*ana
+
 
 class HistoSys:
     def __init__(self, f, HistoSys='ShapeSys', nom=[1.], down=[1.], up=[1.], scheme=1.):
@@ -123,14 +126,15 @@ class HistoSys:
         alpha = arg[-1]
         inter = Interpolate(self.scheme)
         scale = inter(alpha, 1., self.down[int(arg[0]-0.5)], self.up[int(arg[0]-0.5)])
-        return fval *scale 
-        
+        return fval * scale
+
     def integrate(self, bound, nint, *arg):
         alpha = arg[-1]
         inter = Interpolate(self.scheme)
         mod = inter(alpha, 1., self.down[arg[0]], self.up[arg[0]])
         ana = self.f.integrate(bound, nint, arg[:-1])
         return mod*ana
+
 
 class HistiAddPdf:
     def __init__(self, *arg):
@@ -141,13 +145,13 @@ class HistiAddPdf:
             try:
                 self.binedges = func.binedges
             except AttributeError:
-                print "One of these functions ({}) isn't binned",func.name
-        self.func_defaults=None
+                print "One of these functions ({}) isn't binned", func.name
+        self.func_defaults = None
         self.arglen = self.func_code.co_argcount
         self.allf = arg # f function
         self.allpos = allpos # position for f arg
         self.numf = len(self.allf)
-        self.argcache = [None]*self.numf
+        self.argcache = [None] * self.numf
         self.cache = np.zeros(self.numf)
         self.hit = 0
 
@@ -157,9 +161,8 @@ class HistiAddPdf:
             thispos = self.allpos[i]
             this_arg = mask_component_args(thispos, *arg)
             tmp = self.allf[i](*this_arg)
-            self.argcache[i]=this_arg
-            self.cache[i]=tmp
-
+            self.argcache[i] = this_arg
+            self.cache[i] = tmp
             ret += tmp
         return ret
 
@@ -169,20 +172,21 @@ class HistiAddPdf:
         h_pred = np.asarray([self.__call__(centre[i], *arg) for i in range(bwidth.shape[0])]) * bwidth
         return h_pred
 
+
 class HistiCombPdf:
     def __init__(self, *arg):
         allf = []
         self.binedges = []
 
-        ### Needs major cleanup using Numpy.reshape incase one of 
-        ### the functions is already a HistiCombPdf 
+        ### Needs major cleanup using Numpy.reshape incase one of
+        ### the functions is already a HistiCombPdf
         ### points:
-        ### 
+        ###
         ### a) bin edges are already list of numpy arrays
         ### b) functions already have a list of component functions
         ###                 ( whereas in AddPdf they are a tuple )
-        ### 
-        ### in point b) this manifests as having two returns when 
+        ###
+        ### in point b) this manifests as having two returns when
         ## evaluating and therefore the wrong shape. (2,n) vs (n,)
 
         for func in arg:
@@ -203,7 +207,7 @@ class HistiCombPdf:
                 allf.append(func)
         self.func_code, allpos = merge_func_code(*tuple(allf))
         funcpos = allpos[:len(arg)]
-        self.func_defaults=None
+        self.func_defaults = None
         self.arglen = self.func_code.co_argcount
         self.allf = allf # f function
         self.allpos = allpos # position for f arg
@@ -219,9 +223,9 @@ class HistiCombPdf:
             thispos = self.allpos[i]
             this_arg = mask_component_args(thispos, *arg)
             tmp = self.allf[i](*this_arg)
-            self.argcache[i]=this_arg
-            self.cache[i]=tmp
-            ret.append( tmp )
+            self.argcache[i] = this_arg
+            self.cache[i] = tmp
+            ret.append(tmp)
         return tuple(ret)
 
     def evaluatePdf(self, *arg):
@@ -233,3 +237,22 @@ class HistiCombPdf:
             h_new = [self.allf[region](centre[i], *arg) for i in range(bwidth.shape[0])]
             h_pred = np.hstack([h_pred, h_new])
         return h_pred
+
+
+class cpoisson_gen(rv_continuous):
+    """ Continuous Poisson distribution
+    """
+    def _logpmf(self, k, mu):
+        Pk = np.where(mu > 0, sp.xlogy(k, mu) - sp.gammaln(k+1) - mu, 0)
+        return Pk
+
+    def _pmf(self, k, mu):
+        # np.power(mu, n)*np.exp(-mu)/sp.gamma(n+1)
+        return np.exp(self._logpmf(k, mu))
+
+    def _cdf(self, x, mu):
+        k = np.floor(x)
+        return sp.pdtr(k, mu)
+
+
+cpoisson = cpoisson_gen(name="cpoisson", longname='A continuous Poisson')

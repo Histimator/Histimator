@@ -9,10 +9,12 @@
 import numpy as np
 import scipy.stats as st
 import models
-from scipy.stats import poisson
+import pdfs
+# from scipy.stats import poisson
 from .util import FakeFuncCode
 from iminuit import describe
 from iminuit.util import make_func_code
+
 
 class BinnedLH(object):
     def __init__(self, model, data=None, bins=40, weights=None,
@@ -54,19 +56,21 @@ class BinnedLH(object):
             arg = tuple(arg[0].tolist())
         constraint = 0.
         h_pred = self.pdf.evaluatePdf(*arg)
-        parameters = dict(zip(describe(self.pdf.evaluatePdf)[1:],arg))
+        parameters = dict(zip(describe(self.pdf.evaluatePdf)[1:], arg))
         constraints = []
         for par in parameters.keys():
             if "syst" in par.lower():
                 constraints.append(parameters[par])
-        constraint = st.norm(1.,1.).logpdf(np.asarray(constraints)).prod()
-        if constraint <= 0. or isNaN(constraint) : 
+        constraint = st.norm(1., 1.).logpdf(np.asarray(constraints)).prod()
+        if constraint <= 0. or isNaN(constraint):
             constraint = 0.
         h_meas = self.h
         if self.extended:
-            return -st.poisson.logpmf(self.N, h_pred.sum())-poisson.logpmf(h_meas, h_pred).sum() - constraint
+            return -(pdfs.cpoisson.logpmf(self.N, h_pred.sum()) +
+                     poisson.logpmf(h_meas, h_pred).sum() + constraint)
         else:
-            return -poisson.logpmf(h_meas, h_pred).sum() - constraint
+            return -pdfs.cpoisson.logpmf(h_meas, h_pred).sum() - constraint
+
 
 def isNaN(num):
     return num != num
