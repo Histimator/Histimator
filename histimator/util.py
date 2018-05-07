@@ -90,6 +90,7 @@ def mask_component_args(fpos, *arg):
 def rename(f, newarg):
     return FakeFunc(f, newarg)
 
+
 class FakeFunc:
     def __init__(self, f, prmt=None):
         self.f = f
