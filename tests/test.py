@@ -44,12 +44,12 @@ chan.SetData(data)
 m.AddChannel(chan)
 
 
-print "---- printing model --- "
+print("---- printing model --- ")
 pprint (chan.__dict__)
 for n_, s_ in chan.__dict__['samples'].items():
-    print 'sample : ', n_
+    print('sample : ', n_)
     pprint (s_.__dict__)
-print "---------------------------- "
+print("---------------------------- ")
 
 # Call BinnedLH estimator
 blh = BinnedLH(m, bound=bounds, extended=True)
@@ -57,8 +57,8 @@ blh = BinnedLH(m, bound=bounds, extended=True)
 # Minimise everything
 minimiser = Minuit(blh, SigXSecOverSM=0.5, error_SigXSecOverSM=0.1)
 
-print 'about to test SigXSecOverSM at value', minimiser.values['SigXSecOverSM']
+print('about to test SigXSecOverSM at value', minimiser.values['SigXSecOverSM'])
 
 minimiser.migrad()
 minimiser.minos()
-print 'migrad gives SigXSecOverSM as value', minimiser.values['SigXSecOverSM']
+print('migrad gives SigXSecOverSM as value', minimiser.values['SigXSecOverSM'])
