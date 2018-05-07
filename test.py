@@ -55,9 +55,8 @@ blh = BinnedLH(m, bound=bounds, extended=True)
 
 # Minimise everything
 params = m.Parameters()
-print 'params are ', params
-
-print 'describing blg', describe(blh)
+print ('params are ', params)
+print ('describing blg', describe(blh))
 minimiser = Minuit(blh, **params)
 
 #print 'about to test SigXSecOverSM at value', minimiser.values['SigXSecOverSM']
@@ -65,12 +64,12 @@ minimiser = Minuit(blh, **params)
 minimiser.migrad()
 minimiser.hesse()
 minimiser.minos()
-print 'migrad gives values', minimiser.values
+print ('migrad gives values', minimiser.values)
 
 
-print "#######################################"
-print "####### Adding Systematics ############"
-print "#######################################"
+print ("#######################################")
+print ("####### Adding Systematics ############")
+print ("#######################################")
 
 m = HistiModel('model')
 
@@ -97,15 +96,15 @@ blh = BinnedLH(m, bound=bounds, extended=True)
 
 # Minimise everything
 params = m.Parameters()
-print 'params are ', params
+print ('params are ', params)
 
 #print 'describing blg', describe(blh)
 minimiser = Minuit(blh, **params)
 
-print 'about to test SigXSecOverSM at value', minimiser.values['SigXSecOverSM']
+print ('about to test SigXSecOverSM at value', minimiser.values['SigXSecOverSM'])
 
 minimiser.migrad()
 minimiser.hesse()
 minimiser.minos()
 
-print 'migrad gives values', minimiser.values
+print('migrad gives values', minimiser.values)

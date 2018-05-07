@@ -1,4 +1,5 @@
-from pdfs import HistogramPdf, NormedHist, OverallSys, HistoSys, HistiAddPdf, HistiCombPdf
+from .pdfs import HistogramPdf
+from .pdfs import NormedHist, OverallSys, HistoSys, HistiAddPdf, HistiCombPdf
 import numpy as np
 
 class HistiModel(object):
@@ -30,7 +31,7 @@ class HistiModel(object):
             self.pois[poi] = channel.pois[poi]
         for nuis in channel.nps:
             self.nps[nuis] = channel.nps[nuis]
-        
+
     def Parameters(self, minimiser='minuit'):
         if minimiser.lower() in 'minuit':
             parameters = {'errordef': 1}
