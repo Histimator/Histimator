@@ -6,8 +6,8 @@ Histimator
 .. image:: https://img.shields.io/pypi/v/histimator.svg
         :target: https://pypi.python.org/pypi/histimator
 
-.. image:: https://img.shields.io/travis/yhaddad/histimator.svg
-        :target: https://travis-ci.org/yhaddad/histimator
+.. image:: https://img.shields.io/travis/Histimator/Histimator.svg
+        :target: https://travis-ci.org/Histimator/Histimator
 
 .. image:: https://readthedocs.org/projects/histimator/badge/?version=latest
         :target: https://histimator.readthedocs.io/en/latest/?badge=latest
@@ -74,7 +74,7 @@ This model can now be evaluated using probfit Binned Likelihood function::
      m = Minuit(blh, some_norm=0.5, error_some_norm=1.5)
      m.migrad()
 
-this has various built in plotting functionality. 
+this has various built in plotting functionality.
 
 .. image:: https://github.com/Histimator/Histimator/raw/master/docs/fitnorm.png
 

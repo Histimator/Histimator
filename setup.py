@@ -26,7 +26,6 @@ requirements = [
     "numpy",
     "scipy",
     "iminuit"
-    #"probfit"
 ]
 
 setup_requirements = [
