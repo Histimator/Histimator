@@ -25,6 +25,7 @@ class Benchmark:
         self.channels = {}
         self.samples = {}
         self.nps = {}
+        np.random.seed(42)
         
     def gen_nps(self, n_nps):
         return np.random.choice(np.linspace(-2,2,201),n_nps)
@@ -70,11 +71,16 @@ class Benchmark:
                     s.AddNorm("mu",1.0,0,3)
                 else:
                     hist = np.ones(self.n_bins)*(10./(self.n_samples-1))
+                    hist = hist*75./(hist.sum()*(self.n_samples-1))
                     s.SetHisto((hist, np.linspace(0,self.n_bins,self.n_bins+1)))
                     variation = np.random.rand()*.1
                     s.AddOverallSys("BackgroundNormSyst{}".format(sample),1.-variation,1.+variation)
                     for nuis in self.nps.keys():
                         up, down = self.make_variations(hist, self.nps[nuis])
+                        up[up<0.1] = 0.1 #ensure positive
+                        down[down<0.1] = 0.1
+                        up = up*78./up.sum()
+                        down = down*73./down.sum()
                         s.AddHistoSys("BackgroundShapeSyst{}".format(nuis),down,up)
                     data += hist
                 c.AddSample(s)
@@ -83,11 +89,10 @@ class Benchmark:
         self.m = meas
 
     def TimeBenchmark(self, m, mode = 'scipy'):
-#        m = self.m
         if mode is 'scipy':
             blh = BinnedLH(m, minimiser='scipy')
             params = m.Parameters('scipy')
-            minimiser = minimize(blh, params, method='nelder-mead')
+            minimiser = minimize(blh, params, method='bfgs')
         else:
             blh = BinnedLH(m)
             params = m.Parameters()
@@ -103,10 +108,16 @@ class Benchmark:
             self.n_samples = i
             self.build()
             timer = timeit.Timer(partial(self.TimeBenchmark, self.m))
-            t = timer.timeit(number = 10)
+            t = timer.repeat(10, 1)
+            y = np.mean(t)
+            e = np.std(t)
             x.append(i)
-            y1.append(t)
+            y1.append((y,e))
             timer = timeit.Timer(partial(self.TimeBenchmark, self.m, "minuit"))
-            t = timer.timeit(number = 10)
-            y2.append(t)
+            t = timer.repeat(10, 1)
+            y = np.mean(t)
+            e = np.std(t)
+            y2.append((y,e))
+        y1 = np.asarray(y1)
+        y2 = np.asarray(y2)
         return x, y1, y2
