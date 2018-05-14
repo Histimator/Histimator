@@ -5,7 +5,7 @@ from .util import merge_func_code, mask_component_args
 from iminuit import describe
 from .interpolation import Interpolate
 import scipy.special as sp
-from scipy.stats._distn_infrastructure import rv_continuous
+from scipy.stats.distributions import rv_continuous
 
 
 class HistogramPdf(object):

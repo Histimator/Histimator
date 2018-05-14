@@ -12,4 +12,3 @@ plt.xlabel('number of samples')
 plt.ylabel('time to fit in seconds')
 
 plt.show()
- 
