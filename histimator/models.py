@@ -54,6 +54,15 @@ class HistiModel(object):
             for nuis in self.nps:
                 nuis = self.nps[nuis]
                 parameters.append(nuis['nom'])
+
+        elif minimiser.lower() in 'ridge':
+            parameters = []
+            for param in self.pois:
+                param = self.pois[param]
+                parameters.append(param['range'])
+            for nuis in self.nps:
+                nuis = self.nps[nuis]
+                parameters.append(nuis['range'])
         return parameters
 
 
