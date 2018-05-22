@@ -10,4 +10,5 @@ class scipy(object):
     def __init__(self, **kwargs):
         pass
 
-    def astensor(self, array)
+    def tensor(self, array, name, dtype=np.float32):
+        return np.asarray(array).astype(dtype)

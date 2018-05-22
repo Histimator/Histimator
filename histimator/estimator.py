@@ -1,17 +1,12 @@
 """Built-in estimator classes.
 """
 
-# from . import backend as K
-# if K.backend() == 'tensorflow':
-# import tensorflow as tf
-
-
-import numpy as np
 import scipy.stats as st
 from .models import HistiModel
 from .pdfs import cpoisson
 # from scipy.stats import poisson
 from .util import FakeFuncCode
+from .backend import T
 from iminuit import describe
 from iminuit.util import make_func_code
 
@@ -20,7 +15,7 @@ class BinnedLH(object):
     def __init__(self, model, data=None, bins=40, weights=None,
                  weighterrors=None, bound=None,
                  badvalue=1000000, extended=False,
-                 use_w2=False, nint_subdiv=1, minimiser = 'minuit'):
+                 use_w2=False, nint_subdiv=1, minimiser='minuit'):
         if isinstance(model, HistiModel):
             self.pdf = model.pdf
             self.binedges = model.binedges
@@ -34,7 +29,7 @@ class BinnedLH(object):
             if self.data is None:
                 print("error: data is None, please feed the model with data")
             else:
-                self.h = np.asarray(self.data)
+                self.h = T.to_tensor(self.data)
                 self.binned_data = data
                 self.N = self.h.sum()
         else:
@@ -55,13 +50,14 @@ class BinnedLH(object):
         if self.minimiser is 'scipy':
             arg = tuple(arg[0].tolist())
         constraint = 0.
-        h_pred = self.pdf.evaluatePdf(*arg)
+        h_pred = T.to_tensor(self.pdf.evaluatePdf(*arg))
         parameters = dict(zip(describe(self.pdf.evaluatePdf)[1:], arg))
         constraints = []
         for par in parameters.keys():
             if "syst" in par.lower():
                 constraints.append(parameters[par])
-        constraint = st.norm(1., 1.).logpdf(np.asarray(constraints)).prod()
+        constraints = T.to_tensor(constraints)
+        constraint = T.norm(1., 1.).logpdf(constraints).prod()
         if constraint <= 0. or isNaN(constraint):
             constraint = 0.
         h_meas = self.h
