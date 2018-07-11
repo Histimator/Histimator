@@ -13,9 +13,8 @@ Histimator
         :target: https://histimator.readthedocs.io/en/latest/?badge=latest
         :alt: Documentation Status
 
-.. image:: https://zenodo.org/badge/117491128.svg
-   :target: https://zenodo.org/badge/latestdoi/117491128
-
+.. image:: https://zenodo.org/badge/DOI/10.5281/zenodo.1309998.svg
+   :target: https://doi.org/10.5281/zenodo.1309998
 
 A solution for performing maximum likelihood estimation on models built from histogram templates.
 
