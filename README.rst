@@ -13,11 +13,8 @@ Histimator
         :target: https://histimator.readthedocs.io/en/latest/?badge=latest
         :alt: Documentation Status
 
-
-.. image:: https://pyup.io/repos/github/yhaddad/histimator/shield.svg
-     :target: https://pyup.io/repos/github/yhaddad/histimator/
-     :alt: Updates
-
+.. image:: https://zenodo.org/badge/117491128.svg
+   :target: https://zenodo.org/badge/latestdoi/117491128
 
 
 A solution for performing maximum likelihood estimation on models built from histogram templates.
