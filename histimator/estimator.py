@@ -10,11 +10,13 @@ import numpy as np
 import scipy.stats as st
 from .models import HistiModel
 from .pdfs import cpoisson
-# from scipy.stats import poisson
 from .util import FakeFuncCode
+
 from iminuit import describe
 from iminuit.util import make_func_code
 
+from sklearn.linear_model import Ridge
+from sklearn.model_selection import GridSearchCV
 
 class BinnedLH(object):
     def __init__(self, model, data=None, bins=40, weights=None,
@@ -71,6 +73,39 @@ class BinnedLH(object):
         else:
             return -cpoisson.logpdf(h_meas, h_pred).sum() - constraint
 
+class RidgeFit:
+    def __init__(self, model, data=None, npoints=None, alphas = None):
+        self.model = model.pdf
+        if data is None:
+            self.data = model.data
+        else:
+            self.data = data
+            
+        if npoints is None:
+            self.npoints = 1000.*len(self.data)
+        else:
+            self.npoints = npoints
+        
+        if alphas is None:
+            self.alphas = np.array([1e-4,1e-3,1e-2,0.1,.5,1.,5.,10])
+        else:
+            self.alphas = alphas
+
+    def __call__(self, *arg):
+        print 'args are',arg
+        lows = []
+        highs = []
+        for param in arg:
+            lows.append(param[0])
+            highs.append(param[1])
+        print 'highs and lows',highs,lows
+        y = np.random.uniform(lows, highs,(int(self.npoints),len(arg)))
+        X = [self.model.evaluatePdf(*p) for p in y]
+
+        ridge = Ridge()
+        grid = GridSearchCV(estimator=ridge, param_grid=dict(alpha=self.alphas))
+        grid.fit(X, y)
+        return grid.best_estimator_.predict(self.data.reshape(1,-1))[0]
 
 def isNaN(num):
     return num != num
