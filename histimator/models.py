@@ -56,6 +56,43 @@ class HistiModel(object):
                 parameters.append(nuis['nom'])
         return parameters
 
+    def Observables(self, minimiser='minuit'):
+        if minimiser.lower() in 'minuit':
+            parameters = {'errordef': 1}
+            for param in self.pois:
+                name = param
+                param = self.pois[param]
+                parameters[name] = param['nom']
+                parameters['limit_{}'.format(name)] = param['range']
+        return parameters
+
+
+    def FixedParameters(self, tobefixed=None, minimiser='minuit'):
+        if tobefixed is None or len(tobefixed) is not len(self.pois):
+            return self.Parameters(minimiser)
+        if minimiser.lower() in 'minuit':
+            parameters = {'errordef': 1}
+            for param in self.pois:
+                name = param
+                param = self.pois[param]
+                parameters[name] = tobefixed[name]
+                parameters['limit_{}'.format(name)] = param['range']
+                parameters['fix_{}'.format(name)] = True
+            for nuis in self.nps:
+                name = nuis
+                nuis = self.nps[nuis]
+                parameters[name] = nuis['nom']
+                parameters['limit_{}'.format(name)] = nuis['range']
+        elif minimiser.lower() in 'scipy':
+            parameters = []
+            for param in self.pois:
+                param = self.pois[param]
+                parameters.append(param['nom'])
+            for nuis in self.nps:
+                nuis = self.nps[nuis]
+                parameters.append(nuis['nom'])
+        return parameters
+
 
 class HistiChannel(object):
     def __init__(self, name=None):

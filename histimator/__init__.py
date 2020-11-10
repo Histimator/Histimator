@@ -9,13 +9,14 @@ from .models import *
 from .optimiser import *
 from .pdfs import *
 from .util import *
+from .statistics import *
 
-
-__author__ = """Yacine Haddad"""
+__author__ = """Vincent Croft and Yacine Haddad"""
 __email__ = 'yhaddad@cern.ch'
 __version__ = '0.1.0'
 
 __all__ = [
+    "ProfileLikelihoodCalculator",
     "BinnedLH",
     "BinnedLHProfile",
     "Interpolate",
