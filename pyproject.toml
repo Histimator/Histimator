@@ -1,0 +1,72 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "histimator"
+version = "2.0.0a1"
+description = "Histogram-template statistical inference for particle physics and beyond"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [
+    { name = "Yacine Haddad", email = "yhaddad@cern.ch" },
+    { name = "Vincent Croft", email = "vincecroft@gmail.com" },
+]
+keywords = ["statistics", "physics", "histogram", "template-fitting", "inference"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Physics",
+    "Topic :: Scientific/Engineering :: Mathematics",
+]
+dependencies = [
+    "numpy>=1.23",
+    "scipy>=1.9",
+    "iminuit>=2.20",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov",
+    "pytest-benchmark",
+    "ruff",
+    "mypy",
+]
+docs = [
+    "sphinx>=6.0",
+    "sphinx-rtd-theme",
+    "myst-parser",
+    "sphinx-autodoc-typehints",
+]
+
+[project.urls]
+Homepage = "https://github.com/Histimator/Histimator"
+Documentation = "https://histimator.readthedocs.io"
+Repository = "https://github.com/Histimator/Histimator"
+Issues = "https://github.com/Histimator/Histimator/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/histimator"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-v --tb=short"
+
+[tool.ruff]
+target-version = "py310"
+line-length = 99
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "SIM"]
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
