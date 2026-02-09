@@ -29,7 +29,7 @@ References
 from __future__ import annotations
 
 import numpy as np
-from scipy import optimize, stats
+from scipy import optimize
 
 from histimator.channels import Channel
 from histimator.model import Model
@@ -37,7 +37,6 @@ from histimator.test_statistics import (
     compute_qtilde_mu,
     pvalues_qtilde_mu,
 )
-
 
 # ------------------------------------------------------------------
 # Asimov dataset construction

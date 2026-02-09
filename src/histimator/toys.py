@@ -31,21 +31,17 @@ References
 from __future__ import annotations
 
 import numpy as np
-from scipy import interpolate as sp_interp
 
 from histimator.channels import Channel
 from histimator.model import Model
 from histimator.samples import (
     HistoSys,
     LumiSys,
-    NormFactor,
     NormSys,
-    ShapeFactor,
     ShapeSys,
     StatError,
 )
 from histimator.test_statistics import compute_qtilde_mu
-
 
 # ------------------------------------------------------------------
 # Nuisance parameter sampling

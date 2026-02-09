@@ -14,7 +14,6 @@ All models in this file use fixed seeds so results are reproducible.
 """
 
 import numpy as np
-import pytest
 from scipy import stats
 
 from histimator.channels import Channel

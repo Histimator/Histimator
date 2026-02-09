@@ -19,15 +19,14 @@ search.  We validate them at three levels:
 """
 
 import numpy as np
-import pytest
 from scipy import stats
 
 from histimator.channels import Channel
 from histimator.cls import (
     build_asimov_model,
-    compute_asimov_sigma,
-    cls_observed,
     cls_expected_band,
+    cls_observed,
+    compute_asimov_sigma,
     upper_limit_cls,
 )
 from histimator.histograms import Histogram

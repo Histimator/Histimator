@@ -14,7 +14,6 @@ model) should give a poor p-value.
 """
 
 import numpy as np
-import pytest
 
 from histimator.channels import Channel
 from histimator.histograms import Histogram

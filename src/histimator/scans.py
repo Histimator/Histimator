@@ -21,13 +21,11 @@ References
 from __future__ import annotations
 
 import numpy as np
+from iminuit import Minuit
 from scipy import stats
 
 from histimator.likelihood import BinnedNLL, _poisson_logpdf, fit
 from histimator.model import Model
-
-from iminuit import Minuit
-
 
 # ------------------------------------------------------------------
 # Internal helpers

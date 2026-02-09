@@ -19,13 +19,11 @@ References
 from __future__ import annotations
 
 import numpy as np
+from iminuit import Minuit
 
 from histimator.likelihood import BinnedNLL, fit
 from histimator.model import Model
 from histimator.samples import HistoSys, NormSys
-
-from iminuit import Minuit
-
 
 # ------------------------------------------------------------------
 # Pre-fit and post-fit yields

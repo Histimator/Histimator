@@ -29,9 +29,8 @@ from __future__ import annotations
 import numpy as np
 from scipy import stats
 
-from histimator.likelihood import BinnedNLL, fit
+from histimator.likelihood import BinnedNLL
 from histimator.model import Model
-
 
 # ------------------------------------------------------------------
 # Internal helpers

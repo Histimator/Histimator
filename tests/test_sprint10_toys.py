@@ -16,8 +16,6 @@ precision on tail probabilities.
 """
 
 import numpy as np
-import pytest
-from scipy import stats
 
 from histimator.channels import Channel
 from histimator.cls import cls_observed, upper_limit_cls

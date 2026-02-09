@@ -17,7 +17,6 @@ by constructing models where the expected behaviour is known:
 """
 
 import numpy as np
-import pytest
 
 from histimator.channels import Channel
 from histimator.diagnostics import (
@@ -26,7 +25,6 @@ from histimator.diagnostics import (
     prefit_postfit_yields,
 )
 from histimator.histograms import Histogram
-from histimator.likelihood import fit
 from histimator.model import Model
 from histimator.samples import Sample
 

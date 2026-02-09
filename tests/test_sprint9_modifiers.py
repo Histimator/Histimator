@@ -19,18 +19,13 @@ the test outcomes do not depend on random seeds.
 """
 
 import numpy as np
-import pytest
 
 from histimator.channels import Channel
 from histimator.histograms import Histogram
 from histimator.likelihood import BinnedNLL, fit
 from histimator.model import Model
 from histimator.samples import (
-    LumiSys,
     Sample,
-    ShapeFactor,
-    ShapeSys,
-    StatError,
 )
 
 EDGES = np.array([0.0, 1.0, 2.0, 3.0, 4.0, 5.0])
