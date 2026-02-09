@@ -46,7 +46,6 @@ def _model_with_pulled_np(seed=42):
     Expected behaviour: bkg_norm is pulled significantly positive,
     while other NPs (if any) stay near nominal.
     """
-    rng = np.random.default_rng(seed)
     sig_t = np.array([2.0, 5.0, 10.0, 5.0, 2.0])
     bkg_t = np.array([100.0, 100.0, 100.0, 100.0, 100.0])
     data = np.array([120.0, 120.0, 120.0, 120.0, 120.0])

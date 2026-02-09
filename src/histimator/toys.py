@@ -82,7 +82,7 @@ def sample_nuisance_parameters(
                         sampled[name] = float(rng.standard_normal())
 
                 elif isinstance(mod, StatError):
-                    for p, delta in zip(mod.parameters, mod.rel_uncertainties):
+                    for p, delta in zip(mod.parameters, mod.rel_uncertainties, strict=True):
                         if p.name not in seen:
                             seen.add(p.name)
                             sampled[p.name] = float(
@@ -98,7 +98,7 @@ def sample_nuisance_parameters(
                         )
 
                 elif isinstance(mod, ShapeSys):
-                    for p, rel in zip(mod.parameters, mod.rel_uncertainties):
+                    for p, rel in zip(mod.parameters, mod.rel_uncertainties, strict=True):
                         if p.name not in seen:
                             seen.add(p.name)
                             # Gamma distributed with mean=1, var=rel^2

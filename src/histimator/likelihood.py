@@ -85,7 +85,8 @@ class BinnedNLL:
                         self._constrained.add(mod.parameter.name)
                     elif isinstance(mod, StatError):
                         for p, delta in zip(
-                            mod.parameters, mod.rel_uncertainties
+                                mod.parameters, mod.rel_uncertainties,
+                                strict=True
                         ):
                             self._gaussian_constraints[p.name] = (1.0, float(delta))
                     elif isinstance(mod, LumiSys):
@@ -95,7 +96,8 @@ class BinnedNLL:
                         )
                     elif isinstance(mod, ShapeSys):
                         for p, rel in zip(
-                            mod.parameters, mod.rel_uncertainties
+                                mod.parameters, mod.rel_uncertainties,
+                                strict=True
                         ):
                             # Poisson auxiliary data: tau = 1/rel^2
                             tau = 1.0 / (float(rel) ** 2)
