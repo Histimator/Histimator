@@ -6,7 +6,7 @@ maximum-likelihood estimation with systematic uncertainties.
 
 from __future__ import annotations
 
-__version__ = "2.0.0a1"
+__version__ = "0.3.0"
 __all__ = [
     "Parameter",
     "Histogram",

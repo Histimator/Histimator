@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "histimator"
-version = "2.0.0a1"
+version = "0.3.0a1"
 description = "Histogram-template statistical inference for particle physics and beyond"
 readme = "README.md"
 requires-python = ">=3.10"
