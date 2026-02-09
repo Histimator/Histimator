@@ -58,7 +58,51 @@ class HistoSys:
     interp_code: InterpolationCode = InterpolationCode.PIECEWISE_EXPONENTIAL
 
 
-Modifier = NormFactor | NormSys | HistoSys
+@dataclass(frozen=True)
+class StatError:
+    """Per-bin MC statistical uncertainty (Barlow-Beeston).
+
+    Introduces one gamma parameter per bin with Gaussian constraints.
+    gamma_i multiplies the sample yield in bin i, constrained at
+    N(1, rel_uncertainty_i).
+    """
+    parameters: list[Parameter]
+    rel_uncertainties: np.ndarray
+
+
+@dataclass(frozen=True)
+class ShapeSys:
+    """Per-bin uncorrelated shape systematic with Poisson constraints.
+
+    Like StatError but uses Poisson auxiliary data as the constraint,
+    which is more appropriate when the uncertainty comes from a
+    limited-statistics auxiliary measurement.
+    """
+    parameters: list[Parameter]
+    rel_uncertainties: np.ndarray
+
+
+@dataclass(frozen=True)
+class ShapeFactor:
+    """Free-floating per-bin normalisation (no constraint).
+
+    Used for data-driven background estimation where the shape is
+    determined entirely by a control region fit.
+    """
+    parameters: list[Parameter]
+
+
+@dataclass(frozen=True)
+class LumiSys:
+    """Luminosity systematic: single Gaussian-constrained scale factor.
+
+    Multiplies the entire sample yield.  Constrained at N(1, uncertainty).
+    """
+    parameter: Parameter
+    uncertainty: float
+
+
+Modifier = NormFactor | NormSys | HistoSys | StatError | ShapeSys | ShapeFactor | LumiSys
 
 
 # ---- Sample ---------------------------------------------------------------
@@ -86,7 +130,13 @@ class Sample:
     @property
     def parameters(self) -> list[Parameter]:
         """All parameters introduced by this sample's modifiers."""
-        return [m.parameter for m in self._modifiers]
+        params = []
+        for m in self._modifiers:
+            if isinstance(m, (NormFactor, NormSys, HistoSys, LumiSys)):
+                params.append(m.parameter)
+            elif isinstance(m, (StatError, ShapeSys, ShapeFactor)):
+                params.extend(m.parameters)
+        return params
 
     # ---- modifier attachment ------------------------------------------------
 
@@ -135,6 +185,74 @@ class Sample:
         )
         return self
 
+    def add_staterror(
+        self,
+        name: str,
+        rel_uncertainties: np.ndarray | list,
+    ) -> Sample:
+        """Attach per-bin MC statistical uncertainties (Barlow-Beeston).
+
+        Each bin gets a gamma parameter constrained at N(1, delta_i).
+        """
+        rel = np.asarray(rel_uncertainties, dtype=np.float64)
+        if rel.shape[0] != self.histogram.nbins:
+            raise ValueError(
+                f"rel_uncertainties has {rel.shape[0]} entries, "
+                f"expected {self.histogram.nbins}"
+            )
+        params = [
+            Parameter(
+                f"gamma_{name}_bin{i}",
+                value=1.0,
+                bounds=(0.0, 10.0),
+            )
+            for i in range(self.histogram.nbins)
+        ]
+        self._modifiers.append(StatError(parameters=params, rel_uncertainties=rel))
+        return self
+
+    def add_shapesys(
+        self,
+        name: str,
+        rel_uncertainties: np.ndarray | list,
+    ) -> Sample:
+        """Attach per-bin shape systematic with Poisson constraints."""
+        rel = np.asarray(rel_uncertainties, dtype=np.float64)
+        if rel.shape[0] != self.histogram.nbins:
+            raise ValueError(
+                f"rel_uncertainties has {rel.shape[0]} entries, "
+                f"expected {self.histogram.nbins}"
+            )
+        params = [
+            Parameter(
+                f"gamma_{name}_bin{i}",
+                value=1.0,
+                bounds=(0.0, 10.0),
+            )
+            for i in range(self.histogram.nbins)
+        ]
+        self._modifiers.append(ShapeSys(parameters=params, rel_uncertainties=rel))
+        return self
+
+    def add_shapefactor(self, name: str) -> Sample:
+        """Attach free-floating per-bin normalisation (no constraint)."""
+        params = [
+            Parameter(
+                f"sf_{name}_bin{i}",
+                value=1.0,
+                bounds=(0.01, 100.0),
+            )
+            for i in range(self.histogram.nbins)
+        ]
+        self._modifiers.append(ShapeFactor(parameters=params))
+        return self
+
+    def add_lumisys(self, name: str, uncertainty: float) -> Sample:
+        """Attach a luminosity systematic (Gaussian-constrained overall scale)."""
+        p = Parameter(name, value=1.0, bounds=(0.5, 1.5))
+        self._modifiers.append(LumiSys(parameter=p, uncertainty=uncertainty))
+        return self
+
     # ---- evaluation ---------------------------------------------------------
 
     def expected(self, params: dict[str, float]) -> np.ndarray:
@@ -153,18 +271,19 @@ class Sample:
         result = self.histogram.values.copy()
 
         for mod in self._modifiers:
-            alpha = params.get(mod.parameter.name, mod.parameter.value)
-
             if isinstance(mod, NormFactor):
+                alpha = params.get(mod.parameter.name, mod.parameter.value)
                 result = result * alpha
 
             elif isinstance(mod, NormSys):
+                alpha = params.get(mod.parameter.name, mod.parameter.value)
                 scale = interpolate(
                     alpha, 1.0, mod.lo, mod.hi, mod.interp_code
                 )
                 result = result * float(scale)
 
             elif isinstance(mod, HistoSys):
+                alpha = params.get(mod.parameter.name, mod.parameter.value)
                 result = interpolate(
                     alpha,
                     result,
@@ -172,6 +291,16 @@ class Sample:
                     mod.hi_hist.values,
                     mod.interp_code,
                 )
+
+            elif isinstance(mod, (StatError, ShapeSys, ShapeFactor)):
+                gammas = np.array([
+                    params.get(p.name, p.value) for p in mod.parameters
+                ])
+                result = result * gammas
+
+            elif isinstance(mod, LumiSys):
+                lumi = params.get(mod.parameter.name, mod.parameter.value)
+                result = result * lumi
 
         return result
 

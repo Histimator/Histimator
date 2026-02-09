@@ -19,7 +19,7 @@ import scipy.special as sp
 from iminuit import Minuit
 
 from histimator.model import Model
-from histimator.samples import HistoSys, NormSys
+from histimator.samples import HistoSys, LumiSys, NormSys, ShapeSys, StatError
 
 # --------------------------------------------------------------------------
 # Poisson log-likelihood (vectorised, continuous approximation)
@@ -69,17 +69,39 @@ class BinnedNLL:
         # Parameter names in a fixed order for iminuit
         self._par_names = model.parameter_names
 
-        # Identify which parameters are nuisance parameters (have Gaussian
-        # constraints). These are parameters attached to NormSys or HistoSys.
+        # Build constraint registries.
+        #
+        # Standard alpha constraints: NormSys/HistoSys alphas ~ N(0, 1)
         self._constrained: set[str] = set()
+        # Gaussian constraints at non-zero mean: {name: (mean, sigma)}
+        self._gaussian_constraints: dict[str, tuple[float, float]] = {}
+        # Poisson auxiliary constraints: {name: aux_data}
+        self._poisson_constraints: dict[str, float] = {}
+
         for ch in model.channels:
             for sample in ch.samples:
                 for mod in sample.modifiers:
                     if isinstance(mod, (NormSys, HistoSys)):
                         self._constrained.add(mod.parameter.name)
+                    elif isinstance(mod, StatError):
+                        for p, delta in zip(
+                            mod.parameters, mod.rel_uncertainties
+                        ):
+                            self._gaussian_constraints[p.name] = (1.0, float(delta))
+                    elif isinstance(mod, LumiSys):
+                        self._gaussian_constraints[mod.parameter.name] = (
+                            1.0,
+                            mod.uncertainty,
+                        )
+                    elif isinstance(mod, ShapeSys):
+                        for p, rel in zip(
+                            mod.parameters, mod.rel_uncertainties
+                        ):
+                            # Poisson auxiliary data: tau = 1/rel^2
+                            tau = 1.0 / (float(rel) ** 2)
+                            self._poisson_constraints[p.name] = tau
 
         # iminuit interface: expose parameter names.
-        # Modern iminuit (>=2.x) uses _parameters dict.
         self._parameters = {name: None for name in self._par_names}
 
     @property
@@ -112,6 +134,18 @@ class BinnedNLL:
         for name in self._constrained:
             alpha = params.get(name, 0.0)
             constraint += -0.5 * alpha * alpha
+
+        # Gaussian constraints at non-zero mean: gamma ~ N(mean, sigma)
+        for name, (mean, sigma) in self._gaussian_constraints.items():
+            val = params.get(name, mean)
+            constraint += -0.5 * ((val - mean) / sigma) ** 2
+
+        # Poisson auxiliary constraints for ShapeSys
+        for name, tau in self._poisson_constraints.items():
+            gamma = params.get(name, 1.0)
+            # P(tau | tau * gamma) = Poisson(aux_data=tau, mean=tau*gamma)
+            safe_mean = max(tau * gamma, 1e-10)
+            constraint += tau * np.log(safe_mean) - safe_mean - sp.gammaln(tau + 1)
 
         return -(ll + constraint)
 
