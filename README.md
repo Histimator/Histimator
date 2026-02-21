@@ -118,7 +118,7 @@ python -m pytest tests/ -v
 
 ## Status
 
-Version 2.0.0a1 implements the complete HistFactory inference chain. The remaining items from the original gap analysis are JSON workspace serialization (pyhf compatibility), Feldman-Cousins intervals, and channel masking. These are planned for subsequent development.
+Version 0.3.0a1 implements the complete HistFactory inference chain. The remaining items from the original gap analysis are automated binning/template construction, performance enhancement with JAX, Feldman-Cousins intervals, and channel masking. These are planned for subsequent development.
 
 
 ## References
