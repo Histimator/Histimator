@@ -29,14 +29,21 @@ from __future__ import annotations
 import numpy as np
 from scipy import stats
 
-from histimator.likelihood import BinnedNLL
+from histimator.likelihood import BinnedNLL, UnbinnedNLL
 from histimator.model import Model
 
 # ------------------------------------------------------------------
 # Internal helpers
 # ------------------------------------------------------------------
 
-def _fit_unconstrained(model: Model, poi_name: str):
+def _make_nll(model: Model, unbinned: bool = False):
+    """Construct the appropriate NLL object."""
+    if unbinned:
+        return UnbinnedNLL(model)
+    return BinnedNLL(model, extended=False)
+
+
+def _fit_unconstrained(model: Model, poi_name: str, unbinned: bool = False):
     """Unconditional fit with the POI lower bound extended to allow
     negative values.
 
@@ -45,14 +52,15 @@ def _fit_unconstrained(model: Model, poi_name: str):
     which may be negative (indicating a data deficit relative to
     background).  This helper temporarily widens the lower bound.
 
-    Uses extended=False because the per-bin Poisson sum already gives
-    the standard extended likelihood (the -nu_i terms provide the
-    normalisation constraint).  This matches the textbook formulas
-    from CCGV.
+    Uses extended=False for binned mode because the per-bin Poisson sum
+    already gives the standard extended likelihood (the -nu_i terms
+    provide the normalisation constraint).  This matches the textbook
+    formulas from CCGV.  In unbinned mode, the likelihood is always
+    extended.
 
     Returns (nll_min, mu_hat, fit_result).
     """
-    nll = BinnedNLL(model, extended=False)
+    nll = _make_nll(model, unbinned=unbinned)
     par_names = nll._par_names
     start = [p.value for p in model.parameters]
 
@@ -79,13 +87,16 @@ def _fit_unconstrained(model: Model, poi_name: str):
     return nll_min, mu_hat, m
 
 
-def _profile_nll(model: Model, poi_name: str, poi_value: float) -> float:
+def _profile_nll(
+    model: Model, poi_name: str, poi_value: float,
+    unbinned: bool = False,
+) -> float:
     """Minimise the NLL with the POI fixed at a given value.
 
     All other parameters (nuisance parameters) are profiled (floated).
     Returns the minimum NLL value.
     """
-    nll = BinnedNLL(model, extended=False)
+    nll = _make_nll(model, unbinned=unbinned)
     par_names = nll._par_names
     start = [p.value for p in model.parameters]
 
@@ -114,6 +125,7 @@ def _profile_nll(model: Model, poi_name: str, poi_value: float) -> float:
 def compute_q0(
     model: Model,
     poi_name: str,
+    unbinned: bool = False,
 ) -> tuple[float, float]:
     """Discovery test statistic q_0 (CCGV eq 12).
 
@@ -127,6 +139,8 @@ def compute_q0(
         Fully constructed model with observed data.
     poi_name : str
         Name of the signal-strength parameter.
+    unbinned : bool
+        If True, use the unbinned extended likelihood.
 
     Returns
     -------
@@ -135,12 +149,13 @@ def compute_q0(
     mu_hat : float
         The unconstrained best-fit value of the POI.
     """
-    nll_uncond, mu_hat, _ = _fit_unconstrained(model, poi_name)
+    nll_uncond, mu_hat, _ = _fit_unconstrained(model, poi_name,
+                                                unbinned=unbinned)
 
     if mu_hat < 0:
         return 0.0, mu_hat
 
-    nll_cond = _profile_nll(model, poi_name, 0.0)
+    nll_cond = _profile_nll(model, poi_name, 0.0, unbinned=unbinned)
     q0 = max(0.0, 2.0 * (nll_cond - nll_uncond))
     return q0, mu_hat
 
@@ -149,6 +164,7 @@ def compute_qmu(
     model: Model,
     poi_name: str,
     mu_test: float,
+    unbinned: bool = False,
 ) -> tuple[float, float]:
     """One-sided exclusion test statistic q_mu (CCGV eq 14).
 
@@ -164,6 +180,8 @@ def compute_qmu(
         Name of the signal-strength parameter.
     mu_test : float
         The signal strength value to test.
+    unbinned : bool
+        If True, use the unbinned extended likelihood.
 
     Returns
     -------
@@ -172,12 +190,13 @@ def compute_qmu(
     mu_hat : float
         The unconstrained best-fit value of the POI.
     """
-    nll_uncond, mu_hat, _ = _fit_unconstrained(model, poi_name)
+    nll_uncond, mu_hat, _ = _fit_unconstrained(model, poi_name,
+                                                unbinned=unbinned)
 
     if mu_hat > mu_test:
         return 0.0, mu_hat
 
-    nll_cond = _profile_nll(model, poi_name, mu_test)
+    nll_cond = _profile_nll(model, poi_name, mu_test, unbinned=unbinned)
     qmu = max(0.0, 2.0 * (nll_cond - nll_uncond))
     return qmu, mu_hat
 
@@ -186,6 +205,7 @@ def compute_qtilde_mu(
     model: Model,
     poi_name: str,
     mu_test: float,
+    unbinned: bool = False,
 ) -> tuple[float, float]:
     """Exclusion test statistic with physical boundary q_tilde_mu
     (CCGV eq 16).
@@ -203,6 +223,8 @@ def compute_qtilde_mu(
         Name of the signal-strength parameter.
     mu_test : float
         The signal strength value to test.
+    unbinned : bool
+        If True, use the unbinned extended likelihood.
 
     Returns
     -------
@@ -211,19 +233,21 @@ def compute_qtilde_mu(
     mu_hat : float
         The unconstrained best-fit value of the POI (may be negative).
     """
-    nll_uncond, mu_hat, _ = _fit_unconstrained(model, poi_name)
+    nll_uncond, mu_hat, _ = _fit_unconstrained(model, poi_name,
+                                                unbinned=unbinned)
 
     if mu_hat > mu_test:
         return 0.0, mu_hat
 
-    nll_cond = _profile_nll(model, poi_name, mu_test)
+    nll_cond = _profile_nll(model, poi_name, mu_test, unbinned=unbinned)
 
     if mu_hat >= 0:
         # Same as q_mu: denominator is the unconditional NLL
         qtilde = max(0.0, 2.0 * (nll_cond - nll_uncond))
     else:
         # mu_hat < 0: denominator switches to NLL at mu = 0
-        nll_at_zero = _profile_nll(model, poi_name, 0.0)
+        nll_at_zero = _profile_nll(model, poi_name, 0.0,
+                                   unbinned=unbinned)
         qtilde = max(0.0, 2.0 * (nll_cond - nll_at_zero))
 
     return qtilde, mu_hat

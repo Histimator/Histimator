@@ -19,7 +19,14 @@ import scipy.special as sp
 from iminuit import Minuit
 
 from histimator.model import Model
-from histimator.samples import HistoSys, LumiSys, NormSys, ShapeSys, StatError
+from histimator.samples import (
+    HistoSys,
+    LumiSys,
+    NormSys,
+    ShapeFactor,
+    ShapeSys,
+    StatError,
+)
 
 # --------------------------------------------------------------------------
 # Poisson log-likelihood (vectorised, continuous approximation)
@@ -153,6 +160,132 @@ class BinnedNLL:
 
 
 # --------------------------------------------------------------------------
+# Unbinned extended NLL
+# --------------------------------------------------------------------------
+
+_PER_BIN_MODIFIERS = (HistoSys, StatError, ShapeSys, ShapeFactor)
+
+
+class UnbinnedNLL:
+    """Unbinned extended negative log-likelihood for a Histimator Model.
+
+    The likelihood for each channel c with observed events {x_i} is:
+
+        log L_c = sum_i log( sum_j N_j(theta) * p_j(x_i) )
+                  - sum_j N_j(theta)
+
+    where p_j(x) is the probability density from template.evaluate_density
+    and N_j(theta) is the total expected yield for sample j after scalar
+    modifiers.  Since scalar modifiers do not change the shape, p_j(x_i)
+    is cached at construction time.
+
+    Only scalar modifiers (NormFactor, NormSys, LumiSys) are supported.
+    Per-bin modifiers (HistoSys, StatError, ShapeSys, ShapeFactor) raise
+    a clear error because the unbinned density does not capture per-bin
+    shape changes.
+
+    Parameters
+    ----------
+    model : Model
+        A fully constructed model.  Each channel must have unbinned data
+        set via ``channel.set_unbinned_data(events)``.
+    """
+
+    def __init__(self, model: Model) -> None:
+        self._model = model
+        self._par_names = model.parameter_names
+
+        # Validate: no per-bin modifiers
+        for ch in model.channels:
+            for sample in ch.samples:
+                for mod in sample.modifiers:
+                    if isinstance(mod, _PER_BIN_MODIFIERS):
+                        raise ValueError(
+                            f"Sample '{sample.name}' in channel '{ch.name}' "
+                            f"has per-bin modifier {type(mod).__name__}, "
+                            f"which is incompatible with unbinned likelihood. "
+                            f"Only NormFactor, NormSys, and LumiSys are supported."
+                        )
+
+        # Validate: all channels have unbinned data
+        for ch in model.channels:
+            if ch.unbinned_data is None:
+                raise ValueError(
+                    f"Channel '{ch.name}' has no unbinned data. "
+                    f"Call channel.set_unbinned_data(events) first."
+                )
+
+        # Cache per-sample density evaluations at each channel's events.
+        # _density_cache[c][j] is a 1-D array of p_j(x_i) for channel c.
+        # _n_events[c] is the number of events in channel c.
+        self._density_cache: list[list[np.ndarray]] = []
+        self._n_events: list[int] = []
+        for ch in model.channels:
+            events = ch.unbinned_data
+            self._n_events.append(len(events))
+            ch_densities = []
+            for sample in ch.samples:
+                p = sample.template.evaluate_density(events)
+                ch_densities.append(p)
+            self._density_cache.append(ch_densities)
+
+        # Build constraint registries (same logic as BinnedNLL)
+        self._constrained: set[str] = set()
+        self._gaussian_constraints: dict[str, tuple[float, float]] = {}
+        for ch in model.channels:
+            for sample in ch.samples:
+                for mod in sample.modifiers:
+                    if isinstance(mod, (NormSys, HistoSys)):
+                        self._constrained.add(mod.parameter.name)
+                    elif isinstance(mod, LumiSys):
+                        self._gaussian_constraints[mod.parameter.name] = (
+                            1.0,
+                            mod.uncertainty,
+                        )
+
+    @property
+    def model(self) -> Model:
+        return self._model
+
+    def __call__(self, par_array) -> float:
+        """Evaluate the negative log-likelihood."""
+        params = dict(zip(self._par_names, par_array, strict=True))
+
+        ll = 0.0
+        for c, ch in enumerate(self._model.channels):
+            # Compute total expected yield per sample
+            n_totals = []
+            for sample in ch.samples:
+                n_j = float(sample.expected(params).sum())
+                n_totals.append(n_j)
+
+            # Event-level log-likelihood
+            if self._n_events[c] > 0:
+                # rate(x_i) = sum_j N_j * p_j(x_i)
+                rate = np.zeros(self._n_events[c], dtype=np.float64)
+                for j, n_j in enumerate(n_totals):
+                    rate += n_j * self._density_cache[c][j]
+                # Protect against log(0)
+                safe_rate = np.maximum(rate, 1e-300)
+                ll += np.sum(np.log(safe_rate))
+
+            # Extended term: -N_total
+            n_total = sum(n_totals)
+            ll -= n_total
+
+        # Constraint terms
+        constraint = 0.0
+        for name in self._constrained:
+            alpha = params.get(name, 0.0)
+            constraint += -0.5 * alpha * alpha
+        for name, (mean, sigma) in self._gaussian_constraints.items():
+            val = params.get(name, mean)
+            constraint += -0.5 * ((val - mean) / sigma) ** 2
+
+        return -(ll + constraint)
+
+
+# --------------------------------------------------------------------------
 # Fit result
 # --------------------------------------------------------------------------
 
@@ -194,6 +327,7 @@ class FitResult:
 def fit(
     model: Model,
     extended: bool = True,
+    unbinned: bool = False,
     run_minos: bool = False,
     **minuit_kwargs,
 ) -> FitResult:
@@ -204,7 +338,13 @@ def fit(
     model : Model
         Fully constructed model with data attached.
     extended : bool
-        Use extended likelihood (default True).
+        Use extended likelihood (default True).  Ignored when
+        ``unbinned=True`` (the unbinned likelihood is always extended).
+    unbinned : bool
+        If True, use the unbinned extended likelihood.  Each channel
+        must have unbinned data set via ``channel.set_unbinned_data``.
+        Only scalar modifiers (NormFactor, NormSys, LumiSys) are
+        supported in unbinned mode.
     run_minos : bool
         If True, also run MINOS after MIGRAD + HESSE.
     **minuit_kwargs
@@ -214,7 +354,7 @@ def fit(
     -------
     FitResult
     """
-    nll = BinnedNLL(model, extended=extended)
+    nll = UnbinnedNLL(model) if unbinned else BinnedNLL(model, extended=extended)
 
     # Build initial parameter values
     start_values = [p.value for p in model.parameters]

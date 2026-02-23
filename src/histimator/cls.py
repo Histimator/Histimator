@@ -134,6 +134,7 @@ def cls_observed(
     model: Model,
     poi_name: str,
     mu_test: float,
+    unbinned: bool = False,
 ) -> float:
     """Compute the observed CLs value at a specific signal strength.
 
@@ -148,13 +149,19 @@ def cls_observed(
         Name of the signal-strength parameter.
     mu_test : float
         The signal strength to test.
+    unbinned : bool
+        If True, use the unbinned extended likelihood for the
+        observed data test statistic.  The Asimov sigma computation
+        remains binned because the Asimov dataset is inherently a
+        binned construct.
 
     Returns
     -------
     float
         CLs = CL_{s+b} / CL_b.
     """
-    qtilde, mu_hat = compute_qtilde_mu(model, poi_name, mu_test)
+    qtilde, mu_hat = compute_qtilde_mu(model, poi_name, mu_test,
+                                       unbinned=unbinned)
     sigma = compute_asimov_sigma(model, poi_name, mu_test)
     clsb, clb = pvalues_qtilde_mu(qtilde, mu_test, mu_hat, sigma)
 
@@ -231,6 +238,7 @@ def upper_limit_cls(
     cl: float = 0.95,
     scan_range: tuple[float, float] | None = None,
     tolerance: float = 1e-3,
+    unbinned: bool = False,
 ) -> tuple[float, dict[str, float]]:
     """Compute the observed and expected CLs upper limits.
 
@@ -250,6 +258,9 @@ def upper_limit_cls(
         Search range for the limit.  If None, auto-determined.
     tolerance : float
         Root-finding tolerance.
+    unbinned : bool
+        If True, use the unbinned extended likelihood for the
+        observed limit.  The expected band remains binned (Asimov).
 
     Returns
     -------
@@ -274,7 +285,7 @@ def upper_limit_cls(
 
     # --- Observed limit ---
     def obs_objective(mu):
-        return cls_observed(model, poi_name, mu) - alpha
+        return cls_observed(model, poi_name, mu, unbinned=unbinned) - alpha
 
     observed = _find_crossing(obs_objective, lo, hi, tolerance)
 

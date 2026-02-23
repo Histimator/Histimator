@@ -81,6 +81,43 @@ class Channel:
         n_data = "yes" if self._data is not None else "no"
         return f"Channel({self.name!r}, samples={len(self._samples)}, data={n_data})"
 
+    # ------------------------------------------------------------------
+    # Unbinned data
+    # ------------------------------------------------------------------
+
+    def set_unbinned_data(self, events) -> Channel:
+        """Store raw event values for unbinned likelihood evaluation.
+
+        Parameters
+        ----------
+        events : array-like or Dataset
+            1-D array of observed event values, or a Dataset object.
+            Events outside the template domain [edges[0], edges[-1]]
+            are silently dropped to match standard practice.
+
+        Returns
+        -------
+        Channel
+            Self, for method chaining.
+        """
+        from histimator.data import Dataset as _Dataset
+
+        if isinstance(events, _Dataset):
+            raw = events.values
+        else:
+            raw = np.asarray(events, dtype=np.float64).ravel()
+
+        # Clip to template domain
+        lo, hi = float(self.edges[0]), float(self.edges[-1])
+        mask = (raw >= lo) & (raw <= hi)
+        self._unbinned_data = raw[mask]
+        return self
+
+    @property
+    def unbinned_data(self) -> np.ndarray | None:
+        """Raw event values for unbinned likelihood, or None."""
+        return getattr(self, "_unbinned_data", None)
+
     def set_data_from_dataset(self, dataset) -> Channel:
         """Bin a Dataset using this channel's edges and set as observed data.
 
