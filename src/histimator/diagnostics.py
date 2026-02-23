@@ -3,9 +3,9 @@ from __future__ import annotations
 import numpy as np
 from iminuit import Minuit
 
-from histimator.likelihood import BinnedNLL, fit
+from histimator.likelihood import BinnedNLL, FitResult, fit
 from histimator.model import Model
-from histimator.samples import HistoSys, NormSys
+from histimator.samples import HistoSys, LumiSys, NormSys, StatError
 
 """Fit diagnostics: pulls, impacts, and pre/post-fit yields.
 
@@ -79,6 +79,126 @@ def _evaluate_channel(channel, params: dict[str, float]) -> dict:
         samples[sample.name] = yields
         total += yields
     return {"total": total, "samples": samples}
+
+
+def _flat_channel_yields(channel, params: dict[str, float]) -> dict:
+    """Evaluate yields for a channel, returning a flat dictionary.
+
+    Returns {total: array, sample_name_1: array, sample_name_2: array, ...}
+    which is the format expected by plotting scripts.
+    """
+    result = _evaluate_channel(channel, params)
+    flat = {"total": result["total"]}
+    flat.update(result["samples"])
+    return flat
+
+
+# ------------------------------------------------------------------
+# Convenience wrappers that accept a pre-computed FitResult
+# ------------------------------------------------------------------
+
+def prefit_yields(model: Model) -> dict[str, dict[str, np.ndarray]]:
+    """Per-channel, per-sample yields at nominal parameter values.
+
+    Parameters
+    ----------
+    model : Model
+        Fully constructed model with data.
+
+    Returns
+    -------
+    dict
+        ``{channel_name: {total: array, sample_1: array, ...}}``.
+    """
+    nominal_params = model.nominal_values()
+    return {ch.name: _flat_channel_yields(ch, nominal_params)
+            for ch in model.channels}
+
+
+def postfit_yields(
+    model: Model,
+    result: FitResult,
+) -> dict[str, dict[str, np.ndarray]]:
+    """Per-channel, per-sample yields at best-fit parameter values.
+
+    Parameters
+    ----------
+    model : Model
+        Fully constructed model with data.
+    result : FitResult
+        A previously computed fit result (from ``fit(model)``).
+
+    Returns
+    -------
+    dict
+        ``{channel_name: {total: array, sample_1: array, ...}}``.
+    """
+    return {ch.name: _flat_channel_yields(ch, result.bestfit)
+            for ch in model.channels}
+
+
+def nuisance_pulls(
+    model: Model,
+    result: FitResult,
+) -> dict[str, dict[str, float]]:
+    """Compute pulls for all constrained nuisance parameters.
+
+    Pulls are computed as ``(theta_hat - theta_0) / sigma_prefit``
+    where the nominal and pre-fit width depend on the constraint type:
+
+    * ``NormSys``, ``HistoSys``: N(0, 1) constraint, so
+      theta_0 = 0, sigma_prefit = 1.
+    * ``StatError`` gammas: N(1, delta) constraint, so
+      theta_0 = 1, sigma_prefit = delta (the relative uncertainty).
+    * ``LumiSys``: N(1, sigma_L) constraint, so
+      theta_0 = 1, sigma_prefit = sigma_L.
+
+    Parameters
+    ----------
+    model : Model
+        Fully constructed model with data.
+    result : FitResult
+        A previously computed fit result.
+
+    Returns
+    -------
+    dict[str, dict]
+        ``{np_name: {pull, constraint, bestfit, error}}``.
+        The POI and unconstrained parameters are excluded.
+    """
+    # Build a map of parameter name -> (nominal, prefit_sigma)
+    constraints: dict[str, tuple[float, float]] = {}
+    for ch in model.channels:
+        for sample in ch.samples:
+            for mod in sample.modifiers:
+                if isinstance(mod, (NormSys, HistoSys)):
+                    constraints[mod.parameter.name] = (0.0, 1.0)
+                elif isinstance(mod, StatError):
+                    for p, delta in zip(
+                        mod.parameters, mod.rel_uncertainties, strict=True
+                    ):
+                        constraints[p.name] = (1.0, float(delta))
+                elif isinstance(mod, LumiSys):
+                    constraints[mod.parameter.name] = (
+                        1.0,
+                        mod.uncertainty,
+                    )
+
+    output = {}
+    for name, (theta_0, sigma_prefit) in constraints.items():
+        theta_hat = result.bestfit[name]
+        sigma_postfit = result.errors[name]
+        pull = (theta_hat - theta_0) / sigma_prefit
+        constraint = sigma_postfit / sigma_prefit
+
+        output[name] = {
+            "pull": pull,
+            "constraint": constraint,
+            "bestfit": theta_hat,
+            "error": sigma_postfit,
+        }
+
+    return output
 
 
 # ------------------------------------------------------------------

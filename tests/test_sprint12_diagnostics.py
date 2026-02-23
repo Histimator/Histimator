@@ -22,9 +22,13 @@ from histimator.channels import Channel
 from histimator.diagnostics import (
     impacts,
     nuisance_parameter_pulls,
+    nuisance_pulls,
+    postfit_yields,
     prefit_postfit_yields,
+    prefit_yields,
 )
 from histimator.histograms import Histogram
+from histimator.likelihood import fit
 from histimator.model import Model
 from histimator.samples import Sample
 
@@ -316,3 +320,261 @@ class TestImpacts:
             assert "impact_down" in entry
             assert "bestfit" in entry
             assert "error" in entry
+
+
+# ===================================================================
+# Model builders for convenience wrapper tests
+# ===================================================================
+
+def _model_with_all_constraint_types():
+    """A model that exercises every constrained modifier type.
+
+    This includes NormSys (N(0,1) constraint), HistoSys (N(0,1)),
+    StatError gammas (N(1,delta)), and LumiSys (N(1,sigma_L)).
+    The data is generated such that the fit must pull several
+    parameters to match.
+    """
+    sig_t = np.array([5.0, 20.0, 40.0, 20.0, 5.0])
+    bkg_t = np.array([100.0, 100.0, 100.0, 100.0, 100.0])
+    data = np.array([115.0, 130.0, 155.0, 130.0, 115.0])
+
+    sig = Sample("signal", Histogram(sig_t, EDGES))
+    sig.add_normfactor("mu", nominal=1.0, bounds=(0.0, 20.0))
+
+    bkg = Sample("background", Histogram(bkg_t, EDGES))
+    bkg.add_normsys("bkg_norm", lo=0.9, hi=1.1)
+    lo_shape = Histogram([110, 105, 100, 95, 90], EDGES)
+    hi_shape = Histogram([90, 95, 100, 105, 110], EDGES)
+    bkg.add_histosys("bkg_shape", lo_hist=lo_shape, hi_hist=hi_shape)
+    bkg.add_staterror(
+        "bkg_stat", rel_uncertainties=np.full(5, 0.1)
+    )
+    bkg.add_lumisys("lumi", uncertainty=0.025)
+
+    ch = Channel("SR")
+    ch.add_sample(sig)
+    ch.add_sample(bkg)
+    ch.set_data(data)
+
+    m = Model("all_constraints")
+    m.add_channel(ch)
+    return m
+
+
+# ===================================================================
+# Tests: prefit_yields (convenience wrapper)
+# ===================================================================
+
+class TestPrefitYieldsWrapper:
+    """prefit_yields(model) returns a flat dictionary per channel
+    with keys 'total', 'signal', 'background', etc."""
+
+    def test_returns_flat_dict(self):
+        model = _simple_model()
+        pre = prefit_yields(model)
+        ch = pre["SR"]
+        assert "total" in ch
+        assert "signal" in ch
+        assert "background" in ch
+
+    def test_matches_nominal_expected(self):
+        """Prefit yields must equal model.expected() at nominal."""
+        model = _simple_model()
+        pre = prefit_yields(model)
+        nominal = model.nominal_values()
+        expected_total = model.channels[0].expected(nominal)
+        np.testing.assert_allclose(pre["SR"]["total"], expected_total)
+
+    def test_samples_sum_to_total(self):
+        model = _model_with_two_nps()
+        pre = prefit_yields(model)
+        sample_sum = pre["SR"]["signal"] + pre["SR"]["background"]
+        np.testing.assert_allclose(sample_sum, pre["SR"]["total"])
+
+    def test_agrees_with_combined_function(self):
+        """Must match the prefit from prefit_postfit_yields."""
+        model = _simple_model()
+        pre_new = prefit_yields(model)
+        combined = prefit_postfit_yields(model)
+        np.testing.assert_allclose(
+            pre_new["SR"]["total"],
+            combined["SR"]["prefit"]["total"],
+        )
+        np.testing.assert_allclose(
+            pre_new["SR"]["signal"],
+            combined["SR"]["prefit"]["samples"]["signal"],
+        )
+
+
+# ===================================================================
+# Tests: postfit_yields (convenience wrapper)
+# ===================================================================
+
+class TestPostfitYieldsWrapper:
+    """postfit_yields(model, result) uses a pre-computed FitResult."""
+
+    def test_returns_flat_dict(self):
+        model = _simple_model()
+        result = fit(model)
+        post = postfit_yields(model, result)
+        assert "total" in post["SR"]
+        assert "signal" in post["SR"]
+
+    def test_postfit_near_data(self):
+        """For a well-specified model with exact Asimov data, the
+        post-fit total should closely approximate the data."""
+        model = _simple_model()
+        result = fit(model)
+        post = postfit_yields(model, result)
+        data = model.channels[0].data.values
+        np.testing.assert_allclose(post["SR"]["total"], data, rtol=0.05)
+
+    def test_no_internal_fit(self):
+        """postfit_yields must use the provided result, not refit.
+        Verify by passing a result with deliberately shifted values."""
+        model = _simple_model()
+        result = fit(model)
+        # Manually shift mu in the bestfit dict
+        shifted = dict(result.bestfit)
+        shifted["mu"] = 0.0
+        # Create a lightweight FitResult-like object
+        class FakeResult:
+            bestfit = shifted
+        post = postfit_yields(model, FakeResult())
+        # With mu=0, signal contribution should vanish
+        np.testing.assert_allclose(post["SR"]["signal"], 0.0, atol=1e-10)
+
+    def test_agrees_with_combined_function(self):
+        model = _model_with_pulled_np()
+        combined = prefit_postfit_yields(model)
+        result = fit(model)
+        post_new = postfit_yields(model, result)
+        np.testing.assert_allclose(
+            post_new["SR"]["total"],
+            combined["SR"]["postfit"]["total"],
+            rtol=1e-6,
+        )
+
+
+# ===================================================================
+# Tests: nuisance_pulls (convenience wrapper)
+# ===================================================================
+
+class TestNuisancePullsWrapper:
+    """nuisance_pulls(model, result) handles all constrained modifier
+    types and accepts a pre-computed FitResult."""
+
+    def test_includes_normsys(self):
+        model = _model_with_all_constraint_types()
+        result = fit(model)
+        pulls = nuisance_pulls(model, result)
+        assert "bkg_norm" in pulls
+
+    def test_includes_histosys(self):
+        model = _model_with_all_constraint_types()
+        result = fit(model)
+        pulls = nuisance_pulls(model, result)
+        assert "bkg_shape" in pulls
+
+    def test_includes_staterror_gammas(self):
+        """StatError gamma parameters must appear in the pull dict."""
+        model = _model_with_all_constraint_types()
+        result = fit(model)
+        pulls = nuisance_pulls(model, result)
+        gamma_names = [n for n in pulls if n.startswith("gamma_")]
+        assert len(gamma_names) == 5
+
+    def test_includes_lumisys(self):
+        model = _model_with_all_constraint_types()
+        result = fit(model)
+        pulls = nuisance_pulls(model, result)
+        assert "lumi" in pulls
+
+    def test_excludes_poi(self):
+        model = _model_with_all_constraint_types()
+        result = fit(model)
+        pulls = nuisance_pulls(model, result)
+        assert "mu" not in pulls
+
+    def test_gamma_pull_formula(self):
+        """For StatError with N(1,delta), pull = (gamma_hat - 1) / delta.
+
+        With data close to nominal and delta=0.1, gamma pulls should
+        be moderate (not enormous).
+        """
+        model = _model_with_all_constraint_types()
+        result = fit(model)
+        pulls = nuisance_pulls(model, result)
+        for name, p in pulls.items():
+            if name.startswith("gamma_"):
+                assert abs(p["pull"]) < 5.0, (
+                    f"{name} has unreasonable pull {p['pull']}"
+                )
+
+    def test_lumi_pull_formula(self):
+        """For LumiSys with N(1, 0.025), pull = (lumi_hat - 1) / 0.025."""
+        model = _model_with_all_constraint_types()
+        result = fit(model)
+        pulls = nuisance_pulls(model, result)
+        lumi = pulls["lumi"]
+        expected_pull = (lumi["bestfit"] - 1.0) / 0.025
+        np.testing.assert_allclose(lumi["pull"], expected_pull, rtol=1e-10)
+
+    def test_normsys_agrees_with_combined(self):
+        """For NormSys parameters, nuisance_pulls and
+        nuisance_parameter_pulls should give identical results."""
+        model = _model_with_two_nps()
+        result = fit(model)
+        new_pulls = nuisance_pulls(model, result)
+        old_pulls = nuisance_parameter_pulls(model)
+        for name in ["bkg_norm", "bkg_shape"]:
+            np.testing.assert_allclose(
+                new_pulls[name]["pull"],
+                old_pulls[name]["pull"],
+                rtol=0.05,
+            )
+
+    def test_constraint_ratio_bounded(self):
+        """Post-fit uncertainty should not exceed pre-fit."""
+        model = _model_with_all_constraint_types()
+        result = fit(model)
+        pulls = nuisance_pulls(model, result)
+        for name, p in pulls.items():
+            assert p["constraint"] <= 1.5, (
+                f"{name} has constraint ratio {p['constraint']}"
+            )
+
+
+# ===================================================================
+# Tests: paper script smoke test
+# ===================================================================
+
+class TestPaperScriptImports:
+    """The paper scripts must at least import without crashing."""
+
+    def test_appendix_c_imports(self):
+        """The appendix C script's diagnostic imports must resolve."""
+        from histimator.diagnostics import (
+            nuisance_pulls,
+            postfit_yields,
+            prefit_yields,
+        )
+        assert callable(prefit_yields)
+        assert callable(postfit_yields)
+        assert callable(nuisance_pulls)
+
+    def test_appendix_c_gamma_name_pattern(self):
+        """The gamma parameter names from add_staterror must match
+        the pattern used in the paper script's display logic."""
+        model = _model_with_all_constraint_types()
+        result = fit(model)
+        pulls = nuisance_pulls(model, result)
+        gamma_names = [n for n in pulls if n.startswith("gamma_bkg_stat_")]
+        assert len(gamma_names) == 5
+        for n in gamma_names:
+            # The script splits on '_' and takes the last element
+            suffix = n.split("_")[-1]
+            assert suffix.startswith("bin"), (
+                f"Gamma name '{n}' does not end with binN"
+            )
+

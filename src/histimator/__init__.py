@@ -1,7 +1,16 @@
 """Histimator: histogram-template statistical inference."""
 from histimator.bspline_template import BSplineTemplate
 from histimator.channels import Channel
+from histimator.cls import cls_expected_band, cls_observed, upper_limit_cls
 from histimator.data import Dataset
+from histimator.diagnostics import (
+    impacts,
+    nuisance_parameter_pulls,
+    nuisance_pulls,
+    postfit_yields,
+    prefit_postfit_yields,
+    prefit_yields,
+)
 from histimator.eigenmode_constraint import (
     EigenmodeConstraint,
     SystematicDirection,
@@ -52,6 +61,15 @@ __all__ = [
     "BinnedNLL",
     "FitResult",
     "fit",
+    "prefit_yields",
+    "postfit_yields",
+    "nuisance_pulls",
+    "prefit_postfit_yields",
+    "nuisance_parameter_pulls",
+    "impacts",
+    "cls_observed",
+    "cls_expected_band",
+    "upper_limit_cls",
 ]
 
 __version__ = "0.3.1"
