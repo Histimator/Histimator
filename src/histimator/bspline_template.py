@@ -289,8 +289,9 @@ class BSplineTemplate:
     def evaluate_density(self, x: np.ndarray) -> np.ndarray:
         """Evaluate the smooth density at arbitrary points.
 
-        This is the key advantage over BinnedTemplate: the density
-        can be evaluated continuously, not just at bin centres.
+        Unlike BinnedTemplate's piecewise constant evaluation, the
+        B-spline density is smooth and differentiable everywhere
+        within the domain.
         """
         x = np.asarray(x, dtype=np.float64)
         basis_x = _bspline_basis(x, self._knots, 3)

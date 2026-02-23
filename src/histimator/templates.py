@@ -25,6 +25,7 @@ class Template(Protocol):
     - edges: bin edges array
     - nbins: number of bins
     - density(): probability density at bin centres (integrates to ~1)
+    - evaluate_density(x): probability density at arbitrary points
     """
 
     @property
@@ -41,6 +42,22 @@ class Template(Protocol):
         """Return probability density at bin centres: f_hat(x_j).
 
         For a proper density estimator, sum(density * widths) ~ 1.
+        """
+        ...
+
+    def evaluate_density(self, x: np.ndarray) -> np.ndarray:
+        """Evaluate the probability density at arbitrary points.
+
+        Parameters
+        ----------
+        x : numpy.ndarray
+            1-D array of evaluation points.
+
+        Returns
+        -------
+        numpy.ndarray
+            Density values f(x_i), same shape as x.  Points outside
+            the template domain return 0.
         """
         ...
 
@@ -89,6 +106,36 @@ class BinnedTemplate:
         if total == 0:
             return np.zeros(self.nbins)
         return self._histogram.values / (total * self._histogram.widths)
+
+    def evaluate_density(self, x: np.ndarray) -> np.ndarray:
+        """Piecewise constant density at arbitrary points.
+
+        For a point x in bin j, returns values[j] / (total * width_j).
+        Points outside the bin range [edges[0], edges[-1]] return 0.
+
+        This is mathematically identical to density() when evaluated
+        at bin centres, but extends evaluation to any point in the
+        template domain.
+        """
+        x = np.asarray(x, dtype=np.float64)
+        total = self._histogram.total
+        if total == 0:
+            return np.zeros_like(x)
+
+        edges = self._histogram.edges
+        widths = self._histogram.widths
+        values = self._histogram.values
+
+        # np.digitize returns bin index 1..nbins for in-range points,
+        # 0 for below first edge, nbins+1 for above last edge.
+        bin_idx = np.digitize(x, edges)
+        result = np.zeros_like(x)
+
+        for j in range(self.nbins):
+            mask = bin_idx == (j + 1)
+            result[mask] = values[j] / (total * widths[j])
+
+        return result
 
     def __repr__(self) -> str:
         return (

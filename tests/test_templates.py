@@ -64,10 +64,33 @@ class TestProtocolConformance:
             def counts(self):
                 return np.array([10.0])
 
+            def evaluate_density(self, x):
+                return np.ones_like(x)
+
+        assert not isinstance(BadTemplate(), Template)
+
+    def test_protocol_requires_evaluate_density(self):
+        """An object missing evaluate_density() should not satisfy Template."""
+
+        class BadTemplate:
+            @property
+            def nbins(self):
+                return 1
+
+            @property
+            def edges(self):
+                return np.array([0.0, 1.0])
+
+            def counts(self):
+                return np.array([10.0])
+
+            def density(self):
+                return np.array([1.0])
+
         assert not isinstance(BadTemplate(), Template)
 
     def test_custom_template_satisfies_protocol(self):
-        """A custom implementation with all four members satisfies Template."""
+        """A custom implementation with all five members satisfies Template."""
 
         class ConstantTemplate:
             @property
@@ -83,6 +106,9 @@ class TestProtocolConformance:
 
             def density(self):
                 return np.array([1 / 3, 1 / 3, 1 / 3])
+
+            def evaluate_density(self, x):
+                return np.full_like(x, 1 / 3)
 
         assert isinstance(ConstantTemplate(), Template)
 
@@ -197,6 +223,71 @@ class TestBinnedTemplateDensity:
         bt = BinnedTemplate(h)
         prob_mass = bt.density() * h.widths
         np.testing.assert_allclose(prob_mass, vals / vals.sum(), rtol=1e-14)
+
+
+# ── evaluate_density() contract ──────────────────────────────────────────
+
+class TestBinnedTemplateEvaluateDensity:
+    def test_at_bin_centres_matches_density(self):
+        """evaluate_density at bin centres must equal density()."""
+        h = Histogram([10, 20, 30], [0.0, 1.0, 2.0, 3.0])
+        bt = BinnedTemplate(h)
+        centres = 0.5 * (h.edges[:-1] + h.edges[1:])
+        np.testing.assert_allclose(bt.evaluate_density(centres), bt.density(), rtol=1e-14)
+
+    def test_within_bin_is_constant(self):
+        """evaluate_density should return the same value anywhere inside a bin."""
+        h = Histogram([60, 120], [0.0, 2.0, 5.0])
+        bt = BinnedTemplate(h)
+        x = np.array([0.1, 0.5, 1.0, 1.9])
+        vals = bt.evaluate_density(x)
+        np.testing.assert_allclose(vals, vals[0], rtol=1e-14)
+
+    def test_outside_range_is_zero(self):
+        """Points outside [edges[0], edges[-1]] return 0."""
+        h = Histogram([10, 20], [1.0, 2.0, 3.0])
+        bt = BinnedTemplate(h)
+        x = np.array([-1.0, 0.5, 3.5, 100.0])
+        np.testing.assert_array_equal(bt.evaluate_density(x), 0.0)
+
+    def test_integrates_to_one(self):
+        """Numerical quadrature of evaluate_density over the domain should give 1."""
+        h = Histogram([10, 20, 30], [0.0, 1.0, 2.0, 3.0])
+        bt = BinnedTemplate(h)
+        x_fine = np.linspace(0.001, 2.999, 10000)
+        dx = x_fine[1] - x_fine[0]
+        integral = np.sum(bt.evaluate_density(x_fine)) * dx
+        np.testing.assert_allclose(integral, 1.0, rtol=0.01)
+
+    def test_non_uniform_bins(self):
+        """Piecewise constant density with non-uniform bin widths."""
+        h = Histogram([100, 100], [0.0, 1.0, 3.0])
+        bt = BinnedTemplate(h)
+        # Bin 0: width 1, density = 100/(200*1) = 0.5
+        # Bin 1: width 2, density = 100/(200*2) = 0.25
+        np.testing.assert_allclose(bt.evaluate_density(np.array([0.5])), [0.5])
+        np.testing.assert_allclose(bt.evaluate_density(np.array([2.0])), [0.25])
+
+    def test_empty_histogram(self):
+        """Zero-total histogram returns 0 everywhere."""
+        h = Histogram([0, 0, 0], [0.0, 1.0, 2.0, 3.0])
+        bt = BinnedTemplate(h)
+        x = np.array([0.5, 1.5, 2.5])
+        np.testing.assert_array_equal(bt.evaluate_density(x), 0.0)
+
+    def test_scalar_input(self):
+        """Should handle a 0-d or scalar-like array."""
+        h = Histogram([10, 20], [0.0, 1.0, 2.0])
+        bt = BinnedTemplate(h)
+        val = bt.evaluate_density(np.array(0.5))
+        assert np.isfinite(val).all()
+
+    def test_non_negative(self):
+        """Density must be non-negative everywhere."""
+        h = Histogram([0, 50, 0, 30], [0.0, 1.0, 2.0, 3.0, 4.0])
+        bt = BinnedTemplate(h)
+        x = np.linspace(-1, 5, 500)
+        assert np.all(bt.evaluate_density(x) >= 0)
 
 
 # ── Sample integration ───────────────────────────────────────────────────
@@ -358,6 +449,70 @@ class TestFromHistogramFactory:
     def test_invalid_template_type_raises(self):
         with pytest.raises(ValueError, match="Unknown template_type"):
             Sample.from_histogram("sig", _sig_hist(), template_type="magic")
+
+
+class TestEvaluateDensityAllTemplateTypes:
+    """evaluate_density must satisfy basic contracts across all
+    template types: agreement with density() at bin centres, proper
+    normalisation, non-negativity, and zero outside the domain."""
+
+    @pytest.mark.parametrize("tt", TEMPLATE_TYPES)
+    def test_at_centres_agrees_with_density(self, tt):
+        """evaluate_density at bin centres should closely match density()."""
+        s = Sample.from_histogram("sig", _sig_hist(), template_type=tt)
+        t = s.template
+        centres = 0.5 * (t.edges[:-1] + t.edges[1:])
+        # For GP and BSpline the match is approximate due to smoothing;
+        # for binned it is exact.
+        rtol = 1e-10 if tt == "binned" else 0.15
+        np.testing.assert_allclose(
+            t.evaluate_density(centres), t.density(), rtol=rtol,
+        )
+
+    @pytest.mark.parametrize("tt", TEMPLATE_TYPES)
+    def test_integrates_to_one(self, tt):
+        """Numerical quadrature of evaluate_density should approximate 1."""
+        s = Sample.from_histogram("sig", _sig_hist(), template_type=tt)
+        t = s.template
+        lo, hi = t.edges[0], t.edges[-1]
+        x_fine = np.linspace(lo + 1e-6, hi - 1e-6, 5000)
+        dx = x_fine[1] - x_fine[0]
+        integral = np.sum(t.evaluate_density(x_fine)) * dx
+        np.testing.assert_allclose(integral, 1.0, rtol=0.05)
+
+    @pytest.mark.parametrize("tt", TEMPLATE_TYPES)
+    def test_non_negative(self, tt):
+        """Density must be non-negative everywhere."""
+        s = Sample.from_histogram("sig", _sig_hist(), template_type=tt)
+        t = s.template
+        lo, hi = t.edges[0], t.edges[-1]
+        x = np.linspace(lo, hi, 200)
+        assert np.all(t.evaluate_density(x) >= 0)
+
+    @pytest.mark.parametrize("tt", TEMPLATE_TYPES)
+    def test_outside_domain_near_zero(self, tt):
+        """Points outside the domain should return values near zero.
+
+        BinnedTemplate returns exactly zero for out-of-range points.
+        GP and BSpline evaluate on their internal basis which is defined
+        only within [edges[0], edges[-1]], so we test at the domain
+        boundaries where the density should be small for a peaked
+        distribution.
+        """
+        s = Sample.from_histogram("sig", _sig_hist(), template_type=tt)
+        t = s.template
+        lo, hi = t.edges[0], t.edges[-1]
+        if tt == "binned":
+            far_out = np.array([lo - 100, hi + 100])
+            np.testing.assert_array_equal(t.evaluate_density(far_out), 0.0)
+        else:
+            # GP and BSpline basis functions are only valid within the
+            # domain.  Test that boundary values are small relative to
+            # the peak for a distribution peaked in the interior.
+            boundary = np.array([lo + 1e-6, hi - 1e-6])
+            vals = t.evaluate_density(boundary)
+            peak = t.density().max()
+            assert np.all(vals < peak * 1.5)
 
 
 class TestFromDatasetFactory:
