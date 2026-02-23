@@ -1,3 +1,12 @@
+from __future__ import annotations
+
+import numpy as np
+from iminuit import Minuit
+
+from histimator.likelihood import BinnedNLL, fit
+from histimator.model import Model
+from histimator.samples import HistoSys, NormSys
+
 """Fit diagnostics: pulls, impacts, and pre/post-fit yields.
 
 These tools transform raw fit results into the standard diagnostic
@@ -16,14 +25,6 @@ References
 .. [Combine] CMS FitDiagnostics method.
 """
 
-from __future__ import annotations
-
-import numpy as np
-from iminuit import Minuit
-
-from histimator.likelihood import BinnedNLL, fit
-from histimator.model import Model
-from histimator.samples import HistoSys, NormSys
 
 # ------------------------------------------------------------------
 # Pre-fit and post-fit yields

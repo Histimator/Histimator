@@ -18,11 +18,9 @@ These tests verify the convergence empirically on controlled datasets.
 """
 
 import numpy as np
-import pytest
 
 from histimator.channels import Channel
 from histimator.data import Dataset
-from histimator.histograms import Histogram
 from histimator.likelihood import fit
 from histimator.model import Model
 from histimator.samples import Sample
@@ -32,7 +30,6 @@ from histimator.uncertainty import (
     poisson_variance,
     sumw2_variance,
 )
-
 
 # ── Poisson-bootstrap equivalence ────────────────────────────────────────
 

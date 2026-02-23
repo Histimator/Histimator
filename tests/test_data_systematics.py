@@ -11,7 +11,7 @@ import numpy as np
 import pytest
 
 from histimator.channels import Channel
-from histimator.cls import cls_observed, upper_limit_cls
+from histimator.cls import cls_observed
 from histimator.data import Dataset
 from histimator.histograms import Histogram
 from histimator.inference import discovery_significance
@@ -19,7 +19,6 @@ from histimator.interpolation import InterpolationCode
 from histimator.likelihood import fit
 from histimator.model import Model
 from histimator.samples import Sample
-
 
 EDGES = np.array([0.0, 1.0, 2.0, 3.0, 4.0, 5.0])
 

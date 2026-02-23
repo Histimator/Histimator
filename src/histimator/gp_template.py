@@ -118,10 +118,7 @@ def _build_design_matrix(centres: np.ndarray, degree: int,
     H : (n, degree+1) array
     """
     span = x_max - x_min
-    if span < 1e-10:
-        x_norm = np.zeros_like(centres)
-    else:
-        x_norm = 2.0 * (centres - x_min) / span - 1.0
+    x_norm = np.zeros_like(centres) if span < 1e-10 else 2.0 * (centres - x_min) / span - 1.0
     return np.column_stack([x_norm**p for p in range(degree + 1)])
 
 
@@ -159,14 +156,14 @@ def _build_bspline_basis(
         internal_knots,
         np.full(degree + 1, x_max),
     ])
-    H = BSpline.design_matrix(centres, knots, degree).toarray()
-    return H, knots
+    h = BSpline.design_matrix(centres, knots, degree).toarray()
+    return h, knots
 
 
 def _fit_mean_coefficients(
     counts: np.ndarray,
     widths: np.ndarray,
-    H: np.ndarray,
+    h: np.ndarray,
 ) -> np.ndarray:
     """Estimate mean function coefficients by weighted least squares.
 
@@ -180,15 +177,15 @@ def _fit_mean_coefficients(
     safe_counts = np.maximum(counts, 0.5)
     y = np.log(safe_counts / widths)
     w = np.sqrt(safe_counts)
-    Hw = H * w[:, None]
+    hw = h * w[:, None]
     yw = y * w
-    beta_hat, _, _, _ = np.linalg.lstsq(Hw, yw, rcond=None)
+    beta_hat, _, _, _ = np.linalg.lstsq(hw, yw, rcond=None)
     return beta_hat
 
 
 def _augment_kernel(
-    K: np.ndarray,
-    H: np.ndarray,
+    k: np.ndarray,
+    h: np.ndarray,
     beta_prior_variance: float,
 ) -> np.ndarray:
     """Augment kernel with mean function uncertainty: K_eff = K + H B H^T.
@@ -196,15 +193,15 @@ def _augment_kernel(
     This ensures the posterior covariance accounts for uncertainty in
     the trend, not just uncertainty around the trend (R&W Sec. 2.7).
     """
-    p = H.shape[1]
-    B = beta_prior_variance * np.eye(p)
-    return K + H @ B @ H.T
+    p = h.shape[1]
+    b = beta_prior_variance * np.eye(p)
+    return k + h @ b @ h.T
 
 
 def _laplace_mode(
     counts: np.ndarray,
     widths: np.ndarray,
-    K: np.ndarray,
+    k: np.ndarray,
     mean_values: np.ndarray,
     sumw2: np.ndarray | None = None,
     max_iter: int = 50,
@@ -234,11 +231,11 @@ def _laplace_mode(
     f_hat : (m,) posterior mode of log-rate
     mu_hat : (m,) exp(f_hat) * widths
     """
-    m = len(counts)
+
     f = mean_values.copy()
     weighted = sumw2 is not None
 
-    for iteration in range(max_iter):
+    for _iteration in range(max_iter):
         mu = np.exp(np.clip(f, -20, 20)) * widths
 
         if weighted:
@@ -246,20 +243,20 @@ def _laplace_mode(
             # grad of log p(y|f) w.r.t. f = (y - mu) * mu / sumw2
             # W = -d^2/df^2 log p = mu^2 / sumw2  (Fisher information)
             sigma2 = np.maximum(sumw2, 1e-10)
-            W = mu**2 / sigma2
+            w = mu**2 / sigma2
             obs_grad = (counts - mu) * mu / sigma2
         else:
             # Poisson observation model: p(n|f) = Poisson(n | mu)
-            W = mu
+            w = mu
             obs_grad = counts - mu
 
-        grad = obs_grad - solve(K, f - mean_values, assume_a="pos")
+        grad = obs_grad - solve(k, f - mean_values, assume_a="pos")
 
-        B = np.diag(W) + np.linalg.inv(K)
+        b = np.diag(w) + np.linalg.inv(k)
         try:
-            delta = solve(B, grad, assume_a="pos")
+            delta = solve(b, grad, assume_a="pos")
         except np.linalg.LinAlgError:
-            delta = np.linalg.lstsq(B, grad, rcond=None)[0]
+            delta = np.linalg.lstsq(b, grad, rcond=None)[0]
 
         f_new = f + delta
         if np.max(np.abs(delta)) < tol:
@@ -278,21 +275,18 @@ def _laplace_log_marginal(
     log_sigma: float, log_ell: float,
     mean_values: np.ndarray,
     centres: np.ndarray,
-    H: np.ndarray | None,
+    h: np.ndarray | None,
     beta_prior_variance: float,
     sumw2: np.ndarray | None = None,
 ) -> float:
     """Laplace approximation to log marginal likelihood."""
     m = len(counts)
-    K = _kernel_matrix(centres, centres, kernel, log_sigma, log_ell)
-    if H is not None:
-        K_eff = _augment_kernel(K, H, beta_prior_variance)
-    else:
-        K_eff = K.copy()
-    K_eff += 1e-6 * np.eye(m)
+    k = _kernel_matrix(centres, centres, kernel, log_sigma, log_ell)
+    k_eff = _augment_kernel(k, h, beta_prior_variance) if h is not None else k.copy()
+    k_eff += 1e-6 * np.eye(m)
 
     try:
-        f_hat, mu_hat = _laplace_mode(counts, widths, K_eff, mean_values,
+        f_hat, mu_hat = _laplace_mode(counts, widths, k_eff, mean_values,
                                        sumw2=sumw2)
     except (np.linalg.LinAlgError, FloatingPointError):
         return -np.inf
@@ -303,31 +297,31 @@ def _laplace_log_marginal(
         # Gaussian log-likelihood: -0.5 * (y - mu)^2 / sigma^2
         sigma2 = np.maximum(sumw2, 1e-10)
         ll = -0.5 * np.sum((counts - mu_hat)**2 / sigma2)
-        W = mu_hat**2 / sigma2
+        w = mu_hat**2 / sigma2
     else:
         # Poisson log-likelihood
         ll = np.sum(counts * f_hat_clipped
                     + counts * np.log(np.maximum(widths, 1e-300))
                     - np.exp(f_hat_clipped) * widths)
-        W = mu_hat
+        w = mu_hat
 
     try:
-        L_K = cho_factor(K_eff)
-        alpha = cho_solve(L_K, f_hat - mean_values)
+        l_k = cho_factor(k_eff)
+        alpha = cho_solve(l_k, f_hat - mean_values)
         log_prior = (-0.5 * (f_hat - mean_values) @ alpha
-                     - 0.5 * np.sum(np.log(np.diag(L_K[0]))) * 2)
+                     - 0.5 * np.sum(np.log(np.diag(l_k[0]))) * 2)
     except np.linalg.LinAlgError:
         return -np.inf
 
-    W_sqrt = np.sqrt(np.maximum(W, 1e-10))
-    B_mat = np.eye(m) + (W_sqrt[:, None] * K_eff * W_sqrt[None, :])
+    w_sqrt = np.sqrt(np.maximum(w, 1e-10))
+    b_mat = np.eye(m) + (w_sqrt[:, None] * k_eff * w_sqrt[None, :])
     try:
-        L_B = cho_factor(B_mat)
-        log_det_B = np.sum(np.log(np.diag(L_B[0]))) * 2
+        l_b = cho_factor(b_mat)
+        log_det_b = np.sum(np.log(np.diag(l_b[0]))) * 2
     except np.linalg.LinAlgError:
         return -np.inf
 
-    return float(ll + log_prior - 0.5 * log_det_B)
+    return float(ll + log_prior - 0.5 * log_det_b)
 
 
 def _select_mean_degree(
@@ -335,7 +329,7 @@ def _select_mean_degree(
     widths: np.ndarray,
     centres: np.ndarray,
     edges: np.ndarray,
-    kernel: "GPKernel",
+    kernel: GPKernel,
     beta_prior_variance: float = 100.0,
     min_degree: int = 1,
     max_degree: int = 3,
@@ -355,12 +349,12 @@ def _select_mean_degree(
     best_deg = min_degree
 
     for deg in range(min_degree, max_degree + 1):
-        H = _build_design_matrix(centres, deg, x_min, x_max)
+        h = _build_design_matrix(centres, deg, x_min, x_max)
         if np.sum(counts) > 0:
-            beta = _fit_mean_coefficients(counts, widths, H)
+            beta = _fit_mean_coefficients(counts, widths, h)
         else:
-            beta = np.zeros(H.shape[1])
-        mean_vals = H @ beta
+            beta = np.zeros(h.shape[1])
+        mean_vals = h @ beta
 
         best_local = -np.inf
         for init_le in [np.log(data_range / 10),
@@ -369,7 +363,7 @@ def _select_mean_degree(
             for init_ls in [-0.5, 0.0, 0.5]:
                 lml = _laplace_log_marginal(
                     counts, widths, kernel, init_ls, init_le,
-                    mean_vals, centres, H, beta_prior_variance,
+                    mean_vals, centres, h, beta_prior_variance,
                     sumw2=sumw2,
                 )
                 if lml > best_local:
@@ -462,20 +456,20 @@ class GPTemplate:
             # enough flexibility for arbitrary shapes, but fewer than
             # the number of bins so the GP still does useful smoothing.
             n_internal = max(self._nbins // 3, 3)
-            H, knots = _build_bspline_basis(
+            h, knots = _build_bspline_basis(
                 centres, float(self._edges[0]), float(self._edges[-1]),
                 n_internal=n_internal, degree=self._bspline_degree,
             )
-            self._H = H
+            self._h = h
             self._bspline_knots = knots
             self._mean_degree = -2  # sentinel for bspline
 
             if self._total > 0:
-                beta_hat = _fit_mean_coefficients(counts, widths, H)
+                beta_hat = _fit_mean_coefficients(counts, widths, h)
             else:
-                beta_hat = np.zeros(H.shape[1])
+                beta_hat = np.zeros(h.shape[1])
             self._beta_hat = beta_hat
-            self._mean_values = H @ beta_hat
+            self._mean_values = h @ beta_hat
 
         elif self._use_data_mean:
             # Nonparametric: smooth the observed counts in rate space
@@ -497,7 +491,7 @@ class GPTemplate:
             smooth_rate = np.maximum(smooth_rate, 0.5 / widths.max())
             self._mean_values = np.log(smooth_rate)
             self._mean_degree = -1  # sentinel
-            self._H = None
+            self._h = None
             self._beta_hat = None
         else:
             if mean_degree == "auto" and self._total > 0:
@@ -512,17 +506,17 @@ class GPTemplate:
 
             # Build design matrix and fit mean function
             x_min, x_max = float(self._edges[0]), float(self._edges[-1])
-            H = _build_design_matrix(centres, mean_degree, x_min, x_max)
-            self._H = H
+            h = _build_design_matrix(centres, mean_degree, x_min, x_max)
+            self._h = h
             self._x_min = x_min
             self._x_max = x_max
 
             if self._total > 0:
-                beta_hat = _fit_mean_coefficients(counts, widths, H)
+                beta_hat = _fit_mean_coefficients(counts, widths, h)
             else:
-                beta_hat = np.zeros(H.shape[1])
+                beta_hat = np.zeros(h.shape[1])
             self._beta_hat = beta_hat
-            self._mean_values = H @ beta_hat
+            self._mean_values = h @ beta_hat
 
         # Always store edge range for evaluate_density
         self._x_min = float(self._edges[0])
@@ -552,7 +546,7 @@ class GPTemplate:
                 val = _laplace_log_marginal(
                     counts, widths, kernel, ls, le,
                     self._mean_values, centres,
-                    H=self._H,
+                    h=self._h,
                     beta_prior_variance=beta_prior_variance,
                     sumw2=self._obs_sumw2,
                 )
@@ -587,46 +581,46 @@ class GPTemplate:
             self._log_ell = log_ell
 
         # Build kernel and compute posterior
-        K = _kernel_matrix(centres, centres, kernel,
+        k = _kernel_matrix(centres, centres, kernel,
                            self._log_sigma, self._log_ell)
         if self._use_data_mean:
-            K_eff = K + 1e-6 * np.eye(self._nbins)
+            k_eff = k + 1e-6 * np.eye(self._nbins)
         else:
             # Both polynomial and B-spline use R&W 2.7 augmentation
-            K_eff = _augment_kernel(K, self._H, beta_prior_variance)
-            K_eff += 1e-6 * np.eye(self._nbins)
-        self._K = K_eff
+            k_eff = _augment_kernel(k, self._h, beta_prior_variance)
+            k_eff += 1e-6 * np.eye(self._nbins)
+        self._k = k_eff
 
         if self._total > 0:
             self._f_hat, self._mu_hat = _laplace_mode(
-                counts, widths, K_eff, self._mean_values,
+                counts, widths, k_eff, self._mean_values,
                 sumw2=self._obs_sumw2,
             )
             # Full posterior covariance via Woodbury
             if self._obs_sumw2 is not None:
                 sigma2 = np.maximum(self._obs_sumw2, 1e-10)
-                W = self._mu_hat**2 / sigma2
+                w = self._mu_hat**2 / sigma2
             else:
-                W = self._mu_hat
-            W_sqrt = np.sqrt(np.maximum(W, 1e-10))
-            B = np.eye(self._nbins) + (
-                W_sqrt[:, None] * K_eff * W_sqrt[None, :]
+                w = self._mu_hat
+            w_sqrt = np.sqrt(np.maximum(w, 1e-10))
+            b = np.eye(self._nbins) + (
+                w_sqrt[:, None] * k_eff * w_sqrt[None, :]
             )
             try:
-                L_B = cho_factor(B)
-                B_inv = cho_solve(L_B, np.eye(self._nbins))
-                self._post_cov = K_eff - K_eff @ (
-                    W_sqrt[:, None] * B_inv * W_sqrt[None, :]
-                ) @ K_eff
+                l_b = cho_factor(b)
+                b_inv = cho_solve(l_b, np.eye(self._nbins))
+                self._post_cov = k_eff - k_eff @ (
+                    w_sqrt[:, None] * b_inv * w_sqrt[None, :]
+                ) @ k_eff
                 self._post_var = np.diag(self._post_cov)
             except np.linalg.LinAlgError:
-                self._post_cov = K_eff.copy()
-                self._post_var = np.diag(K_eff)
+                self._post_cov = k_eff.copy()
+                self._post_var = np.diag(k_eff)
         else:
             self._f_hat = self._mean_values.copy()
             self._mu_hat = np.zeros(self._nbins)
-            self._post_cov = K_eff.copy()
-            self._post_var = np.diag(K_eff)
+            self._post_cov = k_eff.copy()
+            self._post_var = np.diag(k_eff)
 
         # Compute fitted counts and renormalise
         fitted_rate = np.exp(np.clip(self._f_hat, -20, 20))
@@ -720,32 +714,32 @@ class GPTemplate:
         from scipy.interpolate import BSpline
 
         x = np.asarray(x, dtype=np.float64)
-        K_star = _kernel_matrix(x, self._centres, self._kernel_type,
+        k_star = _kernel_matrix(x, self._centres, self._kernel_type,
                                 self._log_sigma, self._log_ell)
 
         if self._use_data_mean:
             # Interpolate data mean to new points
             mean_star = np.interp(x, self._centres, self._mean_values)
-            K_star_eff = K_star
+            k_star_eff = k_star
         elif self._use_bspline:
-            H_star = BSpline.design_matrix(
+            h_star = BSpline.design_matrix(
                 x, self._bspline_knots, self._bspline_degree,
             ).toarray()
-            mean_star = H_star @ self._beta_hat
-            K_star_eff = K_star + self._beta_prior_variance * (
-                H_star @ self._H.T
+            mean_star = h_star @ self._beta_hat
+            k_star_eff = k_star + self._beta_prior_variance * (
+                h_star @ self._h.T
             )
         else:
-            H_star = _build_design_matrix(x, self._mean_degree,
+            h_star = _build_design_matrix(x, self._mean_degree,
                                           self._x_min, self._x_max)
-            mean_star = H_star @ self._beta_hat
-            K_star_eff = K_star + self._beta_prior_variance * (
-                H_star @ self._H.T
+            mean_star = h_star @ self._beta_hat
+            k_star_eff = k_star + self._beta_prior_variance * (
+                h_star @ self._h.T
             )
 
-        alpha = solve(self._K, self._f_hat - self._mean_values,
+        alpha = solve(self._k, self._f_hat - self._mean_values,
                       assume_a="pos")
-        f_pred = mean_star + K_star_eff @ alpha
+        f_pred = mean_star + k_star_eff @ alpha
         rate = np.exp(np.clip(f_pred, -20, 20))
         if self._total > 0:
             return rate * self._scale / self._total

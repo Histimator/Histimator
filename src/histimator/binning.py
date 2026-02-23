@@ -83,7 +83,6 @@ def cross_validation_binwidth(
         if len(edges) < 2:
             edges = np.array([lo, hi + h])
         counts, _ = np.histogram(vals, bins=edges)
-        m = len(counts)
         p_hat = counts / n
         sum_p2 = np.sum(p_hat ** 2)
 

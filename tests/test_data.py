@@ -18,7 +18,6 @@ from histimator.likelihood import fit
 from histimator.model import Model
 from histimator.samples import Sample
 
-
 # ── Construction and basic properties ────────────────────────────────────
 
 class TestDatasetConstruction:

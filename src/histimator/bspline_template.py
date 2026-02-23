@@ -47,23 +47,23 @@ def _bspline_basis(x: np.ndarray, knots: np.ndarray, degree: int = 3) -> np.ndar
     n_basis = len(knots) - degree - 1.
     """
     n_basis = len(knots) - degree - 1
-    B = np.zeros((len(x), n_basis))
+    b = np.zeros((len(x), n_basis))
     for k in range(n_basis):
         coeffs = np.zeros(n_basis)
         coeffs[k] = 1.0
         spline = BSpline(knots, coeffs, degree, extrapolate=False)
         vals = spline(x)
         vals[np.isnan(vals)] = 0.0
-        B[:, k] = vals
-    return B
+        b[:, k] = vals
+    return b
 
 
 def _difference_matrix(n: int, order: int = 2) -> np.ndarray:
     """Construct the d-th order difference matrix of size (n-d) x n."""
-    D = np.eye(n)
+    d = np.eye(n)
     for _ in range(order):
-        D = np.diff(D, axis=0)
-    return D
+        d = np.diff(d, axis=0)
+    return d
 
 
 def _fit_pspline(
@@ -101,7 +101,7 @@ def _fit_pspline(
     mean_count = max(counts.mean(), 1e-10)
     theta = np.full(p, np.log(mean_count) / max(basis.sum(axis=1).mean(), 1.0))
 
-    for iteration in range(max_iter):
+    for _iteration in range(max_iter):
         eta = basis @ theta
         mu = np.exp(np.clip(eta, -20, 20))
 
@@ -110,8 +110,8 @@ def _fit_pspline(
         z = eta + (counts - mu) / np.maximum(mu, 1e-10)
 
         # Penalized normal equations: (B^T W B + lam*P) theta = B^T W z
-        W = np.diag(w)
-        lhs = basis.T @ W @ basis + lam * penalty_matrix
+        wdi = np.diag(w)
+        lhs = basis.T @ wdi @ basis + lam * penalty_matrix
         rhs = basis.T @ (w * z)
 
         theta_new = solve(lhs, rhs, assume_a="pos")
@@ -138,10 +138,10 @@ def _aic(counts: np.ndarray, basis: np.ndarray, theta: np.ndarray,
     ll = np.sum(counts * eta - mu)
 
     # Effective degrees of freedom
-    W = np.diag(mu)
-    BtWB = basis.T @ W @ basis
-    H_inner = solve(BtWB + lam * penalty_matrix, BtWB, assume_a="pos")
-    edf = np.trace(H_inner)
+    wdi = np.diag(mu)
+    btwb = basis.T @ wdi @ basis
+    h_inner = solve(btwb + lam * penalty_matrix, btwb, assume_a="pos")
+    edf = np.trace(h_inner)
 
     return -2.0 * ll + 2.0 * edf
 
@@ -203,9 +203,9 @@ class BSplineTemplate:
         self._basis = basis
 
         # Difference penalty matrix
-        D = _difference_matrix(n_basis, penalty_order)
-        P = D.T @ D
-        self._penalty_matrix = P
+        d = _difference_matrix(n_basis, penalty_order)
+        p = d.T @ d
+        self._penalty_matrix = p
 
         # Select lambda by AIC if not provided
         if lam is None:
@@ -214,8 +214,8 @@ class BSplineTemplate:
             best_lam = 1.0
             for trial_lam in lam_grid:
                 try:
-                    theta_trial = _fit_pspline(counts, basis, P, trial_lam)
-                    aic_val = _aic(counts, basis, theta_trial, P, trial_lam)
+                    theta_trial = _fit_pspline(counts, basis, p, trial_lam)
+                    aic_val = _aic(counts, basis, theta_trial, p, trial_lam)
                     if aic_val < best_aic:
                         best_aic = aic_val
                         best_lam = trial_lam
@@ -224,7 +224,7 @@ class BSplineTemplate:
             lam = best_lam
 
         self._lam = lam
-        self._theta = _fit_pspline(counts, basis, P, lam)
+        self._theta = _fit_pspline(counts, basis, p, lam)
 
         # Compute fitted values at bin centres
         eta = basis @ self._theta
@@ -238,7 +238,10 @@ class BSplineTemplate:
             self._scale = 1.0
 
         self._fitted_counts = self._fitted_rate * self._scale * widths
-        self._fitted_density = self._fitted_rate * self._scale / self._total if self._total > 0 else np.zeros(self._nbins)
+        self._fitted_density = (
+            self._fitted_rate * self._scale / self._total
+            if self._total > 0 else np.zeros(self._nbins)
+            )
 
         # Store sumw2 from original histogram for uncertainty propagation
         self._sumw2 = histogram.sumw2.copy()

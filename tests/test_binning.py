@@ -26,11 +26,9 @@ from histimator.binning import (
 )
 from histimator.channels import Channel
 from histimator.data import Dataset
-from histimator.histograms import Histogram
 from histimator.likelihood import fit
 from histimator.model import Model
 from histimator.samples import Sample
-
 
 # ── Cross-validation ─────────────────────────────────────────────────────
 

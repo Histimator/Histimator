@@ -23,14 +23,13 @@ claims:
 import numpy as np
 import pytest
 
-from histimator.histograms import Histogram
-from histimator.gp_template import GPTemplate, GPKernel
 from histimator.eigenmode_constraint import (
     EigenmodeConstraint,
     SystematicDirection,
     make_systematic_direction,
 )
-
+from histimator.gp_template import GPKernel, GPTemplate
+from histimator.histograms import Histogram
 
 # ── Fixtures ─────────────────────────────────────────────────────────
 
@@ -223,9 +222,9 @@ class TestEigenmodeConstraintStatOnly:
 
     def test_eigenvectors_orthonormal(self, nominal_gp):
         ec = EigenmodeConstraint(nominal_gp)
-        V = ec.eigenvectors
-        VTV = V.T @ V
-        np.testing.assert_allclose(VTV, np.eye(ec.n_modes), atol=1e-10)
+        v = ec.eigenvectors
+        vtv = v.T @ v
+        np.testing.assert_allclose(vtv, np.eye(ec.n_modes), atol=1e-10)
 
     def test_deformation_at_zero_is_identity(self, nominal_gp):
         ec = EigenmodeConstraint(nominal_gp)
@@ -280,14 +279,11 @@ class TestEigenmodeConstraintWithSystematics:
         or stay similar depending on how the systematic direction
         aligns with existing eigenvectors.
         """
-        ec_stat = EigenmodeConstraint(
-            nominal_gp, variance_threshold=0.99,
-        )
         sd = make_systematic_direction("JES", nominal_gp, gp_up, gp_down)
         ec_comb = EigenmodeConstraint(
             nominal_gp, systematics=[sd], variance_threshold=0.99,
         )
-        # Combined should capture at least 99% of its larger total variance
+        # Combined should capture at least 99% of the total variance
         assert ec_comb.variance_captured >= 0.99
         # And must have at least 1 mode
         assert ec_comb.n_modes >= 1
@@ -409,7 +405,10 @@ class TestCoverageFunctional:
         68% CI with 10 bins and 200 MC events (moderate starvation)."""
         from iminuit import Minuit
 
-        n_bins = 10; n_bkg = 500; n_sig = 20; mu_true = 1.0
+        n_bins = 10
+        n_bkg = 500
+        n_sig = 20
+        mu_true = 1.0
         edges = np.linspace(100, 160, n_bins + 1)
         centres = 0.5 * (edges[:-1] + edges[1:])
         widths = np.diff(edges)
@@ -419,7 +418,9 @@ class TestCoverageFunctional:
         from scipy.stats import norm as normal_dist
         true_sig = normal_dist.pdf(centres, 125, 3) * widths
         true_sig *= n_sig / true_sig.sum()
-        n_mc = 200; n_exp = 100; covered = 0
+        n_mc = 200
+        n_exp = 100
+        covered = 0
 
         for i in range(n_exp):
             rng = np.random.default_rng(8000 + i)
@@ -440,21 +441,24 @@ class TestCoverageFunctional:
             sig_smooth = gp_s.counts() * (n_sig / max(gp_s.counts().sum(), 1))
 
             k = ec.n_modes
-            def nll(params):
-                mu = params[0]; z = params[1:]
+            def nll(params, data=data, bkg_smooth=bkg_smooth, sig_smooth=sig_smooth, ec=ec):
+                mu = params[0]
+                z = params[1:]
                 exp_bkg = bkg_smooth * ec.deformation(z)
                 nu = mu * sig_smooth + exp_bkg
                 nu = np.maximum(nu, 1e-10)
                 return -np.sum(data * np.log(nu) - nu) + ec.constraint_nll(z)
 
-            start = np.zeros(1 + k); start[0] = 1.0
+            start = np.zeros(1 + k)
+            start[0] = 1.0
             names = ["mu"] + [f"z{j}" for j in range(k)]
             m = Minuit(nll, start, name=names)
             m.errordef = 0.5
             m.limits["mu"] = (-5, 20)
             for j in range(k):
                 m.limits[f"z{j}"] = (-5, 5)
-            m.migrad(); m.hesse()
+            m.migrad()
+            m.hesse()
 
             if m.valid and m.errors["mu"] > 0:
                 pull = (m.values["mu"] - mu_true) / m.errors["mu"]

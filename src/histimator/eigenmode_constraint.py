@@ -36,7 +36,6 @@ References:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
 
 import numpy as np
 
@@ -135,10 +134,10 @@ class EigenmodeConstraint:
     def __init__(
         self,
         gp_nominal: GPTemplate,
-        systematics: Optional[list[SystematicDirection]] = None,
+        systematics: list[SystematicDirection] | None = None,
         variance_threshold: float = 0.99,
         min_modes: int = 1,
-        max_modes: Optional[int] = None,
+        max_modes: int | None = None,
     ) -> None:
         self._gp_nominal = gp_nominal
         self._systematics = list(systematics or [])

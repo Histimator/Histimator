@@ -1,9 +1,12 @@
 """Channel: an analysis region combining samples with observed data."""
 from __future__ import annotations
+
 import numpy as np
+
 from histimator.histograms import Histogram
 from histimator.parameters import Parameter
 from histimator.samples import Sample
+
 
 class Channel:
     def __init__(self, name: str) -> None:

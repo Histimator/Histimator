@@ -1,8 +1,11 @@
 """Sample: a single histogram template with modifiers."""
 
 from __future__ import annotations
+
 from dataclasses import dataclass
+
 import numpy as np
+
 from histimator.histograms import Histogram
 from histimator.interpolation import InterpolationCode, interpolate
 from histimator.parameters import Parameter
@@ -181,7 +184,9 @@ class Sample:
         return result
 
     def __repr__(self) -> str:
-        return f"Sample({self.name!r}, nbins={self._template.nbins}, modifiers={len(self._modifiers)})"
+        return (f"Sample({self.name!r}, nbins={self._template.nbins},"
+                f"modifiers={len(self._modifiers)})"
+                )
 
     @classmethod
     def from_histogram(cls, name: str, histogram, template_type: str = "binned",
@@ -284,9 +289,9 @@ class Sample:
             edges = self._template.edges
         elif edges is None and strategy is not None:
             from histimator.binning import auto_edges
-            from histimator.data import Dataset as _DS
+            from histimator.data import Dataset
             edges = auto_edges(
-                _DS(np.concatenate([lo_dataset.values, hi_dataset.values])),
+                Dataset(np.concatenate([lo_dataset.values, hi_dataset.values])),
                 method=strategy,
             )
 

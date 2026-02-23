@@ -1,3 +1,16 @@
+import numpy as np
+import pytest
+
+from histimator.bspline_template import BSplineTemplate
+from histimator.channels import Channel
+from histimator.data import Dataset
+from histimator.gp_template import GPTemplate
+from histimator.histograms import Histogram
+from histimator.likelihood import fit
+from histimator.model import Model
+from histimator.samples import Sample
+from histimator.templates import BinnedTemplate, Template
+
 """Tests for Sprint 1: Template protocol and BinnedTemplate.
 
 The mathematical contract under test is that a BinnedTemplate wrapping
@@ -9,17 +22,6 @@ a Histogram produces:
 The architectural contract is that Sample(name, Histogram(...)) transparently
 wraps into BinnedTemplate, so every existing code path is preserved.
 """
-
-import numpy as np
-import pytest
-
-from histimator.channels import Channel
-from histimator.histograms import Histogram
-from histimator.likelihood import fit
-from histimator.model import Model
-from histimator.samples import Sample
-from histimator.templates import BinnedTemplate, Template
-
 
 # ── Protocol conformance ─────────────────────────────────────────────────
 
@@ -292,9 +294,11 @@ class TestFullModelThroughTemplate:
 # and the rest of the pipeline (modifiers, channels, model, fit) works
 # unchanged.
 
-from histimator.data import Dataset
-from histimator.gp_template import GPTemplate, GPKernel
+""" using
 from histimator.bspline_template import BSplineTemplate
+from histimator.data import Dataset
+from histimator.gp_template import GPTemplate
+"""
 
 # Shared fixtures: high-stats histograms so GP and BSpline smoothing
 # produces counts close to the raw histogram (enabling meaningful
