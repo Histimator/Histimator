@@ -323,6 +323,118 @@ class EigenmodeConstraint:
         raw = self._gp_nominal.histogram.values
         return 1.0 / np.maximum(raw, 0.5)
 
+    # ------------------------------------------------------------------
+    # Continuous evaluation via Nystrom extension
+    # ------------------------------------------------------------------
+
+    def _nystrom_weights(self) -> np.ndarray:
+        """Precompute the Nystrom weight matrix V @ diag(1/sqrt(lambda)).
+
+        The weight matrix W has shape (n_bins, n_modes) and satisfies:
+
+            log_shift(x) = Sigma_combined(x, X) @ W @ z
+
+        for any point x and eigenmode amplitudes z.
+        """
+        return self._eigenvectors * (1.0 / self._sqrt_eigenvalues[None, :])
+
+    def _combined_cross_covariance(self, x: np.ndarray) -> np.ndarray:
+        """Combined cross-covariance Sigma_comb(x, X_train).
+
+        Parameters
+        ----------
+        x : (m,) array
+            Evaluation points.
+
+        Returns
+        -------
+        sigma_cross : (m, n_bins) array
+            Row i gives the combined covariance between x[i] and each
+            training centre, including both statistical and systematic
+            components.
+        """
+        # Statistical component: GP posterior cross-covariance
+        sigma_cross = self._gp_nominal.posterior_cross_covariance(x)
+
+        # Systematic component: sum_k delta_k(x) * delta_k(X)^T
+        for syst in self._systematics:
+            # Extend the systematic direction to the evaluation points
+            # using the GP fits at the variation templates.
+            delta_x = (
+                syst.gp_up.predict_log_rate(x)
+                - syst.gp_down.predict_log_rate(x)
+            ) / 2.0
+            # delta_x is (m,), syst.delta is (n_bins,)
+            sigma_cross += delta_x[:, None] * syst.delta[None, :]
+
+        return sigma_cross
+
+    def deformation_at(self, z: np.ndarray, x: np.ndarray) -> np.ndarray:
+        """Evaluate the multiplicative template deformation at arbitrary points.
+
+        This is the continuous extension of ``deformation(z)``, which
+        only returns values at bin centres.  The extension uses the
+        Nystrom formula to promote discrete eigenvectors to continuous
+        eigenfunctions:
+
+            phi_i(x) = (1/lambda_i) * Sigma_comb(x, X) @ v_i
+
+        and then the deformation is:
+
+            factor(x) = exp( sum_i sqrt(lambda_i) * z_i * phi_i(x) )
+                      = exp( Sigma_comb(x, X) @ W @ z )
+
+        where W = V @ diag(1/sqrt(lambda)).
+
+        Parameters
+        ----------
+        z : (n_modes,) array
+            Eigenmode amplitudes.
+        x : array-like
+            1-D array of evaluation points.
+
+        Returns
+        -------
+        factor : numpy.ndarray
+            Multiplicative deformation at each point, same shape as x.
+        """
+        z = np.asarray(z, dtype=np.float64)
+        if z.shape != (self._n_modes,):
+            raise ValueError(
+                f"Expected z of shape ({self._n_modes},), got {z.shape}"
+            )
+        x = np.asarray(x, dtype=np.float64)
+        sigma_cross = self._combined_cross_covariance(x)
+        w = self._nystrom_weights()
+        log_shift = sigma_cross @ w @ z
+        return np.exp(log_shift)
+
+    def deformed_density(
+        self, z: np.ndarray, x: np.ndarray,
+    ) -> np.ndarray:
+        """Evaluate the deformed template density at arbitrary points.
+
+        Returns the product of the nominal GP density and the eigenmode
+        deformation, both evaluated continuously at x:
+
+            f(x; z) = f_nominal(x) * deformation(x; z)
+
+        Parameters
+        ----------
+        z : (n_modes,) array
+            Eigenmode amplitudes.
+        x : array-like
+            1-D array of evaluation points.
+
+        Returns
+        -------
+        density : numpy.ndarray
+            Deformed density at each point.
+        """
+        x = np.asarray(x, dtype=np.float64)
+        nominal = self._gp_nominal.evaluate_density(x)
+        return nominal * self.deformation_at(z, x)
+
     def __repr__(self) -> str:
         syst_str = ", ".join(self.systematic_names) or "none"
         return (

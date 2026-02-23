@@ -711,39 +711,130 @@ class GPTemplate:
 
     def evaluate_density(self, x: np.ndarray) -> np.ndarray:
         """Evaluate smooth density at arbitrary points via GP prediction."""
-        from scipy.interpolate import BSpline
-
-        x = np.asarray(x, dtype=np.float64)
-        k_star = _kernel_matrix(x, self._centres, self._kernel_type,
-                                self._log_sigma, self._log_ell)
-
-        if self._use_data_mean:
-            # Interpolate data mean to new points
-            mean_star = np.interp(x, self._centres, self._mean_values)
-            k_star_eff = k_star
-        elif self._use_bspline:
-            h_star = BSpline.design_matrix(
-                x, self._bspline_knots, self._bspline_degree,
-            ).toarray()
-            mean_star = h_star @ self._beta_hat
-            k_star_eff = k_star + self._beta_prior_variance * (
-                h_star @ self._h.T
-            )
-        else:
-            h_star = _build_design_matrix(x, self._mean_degree,
-                                          self._x_min, self._x_max)
-            mean_star = h_star @ self._beta_hat
-            k_star_eff = k_star + self._beta_prior_variance * (
-                h_star @ self._h.T
-            )
-
-        alpha = solve(self._k, self._f_hat - self._mean_values,
-                      assume_a="pos")
-        f_pred = mean_star + k_star_eff @ alpha
+        f_pred = self.predict_log_rate(x)
         rate = np.exp(np.clip(f_pred, -20, 20))
         if self._total > 0:
             return rate * self._scale / self._total
-        return np.zeros_like(x)
+        return np.zeros_like(np.asarray(x, dtype=np.float64))
+
+    def _cross_k_eff(self, x_star: np.ndarray) -> np.ndarray:
+        """Compute the effective cross-covariance K_eff(x*, X_train).
+
+        This includes the mean function augmentation term H* B H^T
+        when a parametric mean function is used.
+
+        Parameters
+        ----------
+        x_star : (m,) array
+            Evaluation points.
+
+        Returns
+        -------
+        k_star_eff : (m, n_bins) array
+            Effective cross-covariance between x* and training centres.
+        """
+        from scipy.interpolate import BSpline
+
+        x_star = np.asarray(x_star, dtype=np.float64)
+        k_star = _kernel_matrix(x_star, self._centres, self._kernel_type,
+                                self._log_sigma, self._log_ell)
+
+        if self._use_data_mean:
+            return k_star
+        elif self._use_bspline:
+            h_star = BSpline.design_matrix(
+                x_star, self._bspline_knots, self._bspline_degree,
+            ).toarray()
+            return k_star + self._beta_prior_variance * (h_star @ self._h.T)
+        else:
+            h_star = _build_design_matrix(x_star, self._mean_degree,
+                                          self._x_min, self._x_max)
+            return k_star + self._beta_prior_variance * (h_star @ self._h.T)
+
+    def _mean_at(self, x_star: np.ndarray) -> np.ndarray:
+        """Evaluate the mean function at arbitrary points.
+
+        Parameters
+        ----------
+        x_star : (m,) array
+            Evaluation points.
+
+        Returns
+        -------
+        mean_star : (m,) array
+            Mean function values m(x*).
+        """
+        from scipy.interpolate import BSpline
+
+        x_star = np.asarray(x_star, dtype=np.float64)
+        if self._use_data_mean:
+            return np.interp(x_star, self._centres, self._mean_values)
+        elif self._use_bspline:
+            h_star = BSpline.design_matrix(
+                x_star, self._bspline_knots, self._bspline_degree,
+            ).toarray()
+            return h_star @ self._beta_hat
+        else:
+            h_star = _build_design_matrix(x_star, self._mean_degree,
+                                          self._x_min, self._x_max)
+            return h_star @ self._beta_hat
+
+    def predict_log_rate(self, x: np.ndarray) -> np.ndarray:
+        """Predict the GP posterior mean of the log-rate at arbitrary points.
+
+        This is the continuous extension of the ``log_rate`` property,
+        which only returns values at bin centres.  The prediction uses
+        the standard GP conditional mean:
+
+            f*(x) = m(x) + K_eff(x, X) @ K_eff(X, X)^{-1} @ (f_hat - m(X))
+
+        Parameters
+        ----------
+        x : array-like
+            1-D array of evaluation points within the template domain.
+
+        Returns
+        -------
+        f_pred : numpy.ndarray
+            Predicted log-rate values, same shape as x.
+        """
+        x = np.asarray(x, dtype=np.float64)
+        k_star_eff = self._cross_k_eff(x)
+        mean_star = self._mean_at(x)
+        alpha = solve(self._k, self._f_hat - self._mean_values,
+                      assume_a="pos")
+        return mean_star + k_star_eff @ alpha
+
+    def posterior_cross_covariance(self, x_star: np.ndarray) -> np.ndarray:
+        """Posterior cross-covariance between arbitrary points and training centres.
+
+        Computes Cov(f(x*), f(X)) under the Laplace-approximate posterior.
+        This is the matrix that enables the Nystrom extension of the
+        discrete eigenmodes to continuous eigenfunctions.
+
+        The formula is:
+
+            K_post(x*, X) = K_eff(x*, X) @ K_eff(X,X)^{-1} @ Sigma_post(X,X)
+
+        where Sigma_post(X,X) is the posterior covariance at the training
+        points (available as ``posterior_covariance``).
+
+        Parameters
+        ----------
+        x_star : array-like
+            1-D array of evaluation points, shape (m,).
+
+        Returns
+        -------
+        cross_cov : numpy.ndarray
+            Shape (m, n_bins).  Row i gives the covariance between
+            f(x_star[i]) and f(X_j) for all training centres X_j.
+        """
+        x_star = np.asarray(x_star, dtype=np.float64)
+        k_star_eff = self._cross_k_eff(x_star)
+        # K_eff^{-1} @ Sigma_post
+        alpha_post = solve(self._k, self._post_cov, assume_a="pos")
+        return k_star_eff @ alpha_post
 
     def __repr__(self) -> str:
         if self._use_data_mean:

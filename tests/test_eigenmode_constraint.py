@@ -469,6 +469,206 @@ class TestCoverageFunctional:
         assert coverage > 0.40, f"Coverage {coverage:.2f} is catastrophically low"
 
 
+class TestGPPredictLogRate:
+    """predict_log_rate(x) is the continuous extension of log_rate."""
+
+    @pytest.fixture(scope="class")
+    def gp(self):
+        h = _make_exponential_histogram(500, 20)
+        return GPTemplate(h, kernel=GPKernel.MATERN_52,
+                          optimize_hyperparameters=False)
+
+    def test_at_centres_agrees_with_log_rate(self, gp):
+        """predict_log_rate at bin centres should closely reproduce
+        the stored log_rate posterior mode.  The difference arises
+        from solving K @ alpha = (f_hat - m) numerically rather
+        than using the stored f_hat directly."""
+        centres = 0.5 * (gp.edges[:-1] + gp.edges[1:])
+        f_pred = gp.predict_log_rate(centres)
+        np.testing.assert_allclose(f_pred, gp.log_rate, atol=1e-4)
+
+    def test_smooth_on_fine_grid(self, gp):
+        """Predictions on a fine grid should vary smoothly."""
+        lo, hi = gp.edges[0], gp.edges[-1]
+        x_fine = np.linspace(lo + 0.1, hi - 0.1, 200)
+        f = gp.predict_log_rate(x_fine)
+        # First differences should be small relative to signal
+        diffs = np.abs(np.diff(f))
+        assert np.all(diffs < 0.5), "Jumps detected in predict_log_rate"
+
+    def test_finite_values(self, gp):
+        lo, hi = gp.edges[0], gp.edges[-1]
+        x = np.linspace(lo + 0.1, hi - 0.1, 50)
+        assert np.all(np.isfinite(gp.predict_log_rate(x)))
+
+
+class TestGPPosteriorCrossCovariance:
+    """posterior_cross_covariance(x) gives the covariance between
+    f(x) and f(X_train) under the Laplace posterior."""
+
+    @pytest.fixture(scope="class")
+    def gp(self):
+        h = _make_exponential_histogram(500, 20)
+        return GPTemplate(h, kernel=GPKernel.MATERN_52,
+                          optimize_hyperparameters=False)
+
+    def test_at_centres_agrees_with_posterior_covariance(self, gp):
+        """At bin centres, the cross-covariance should approximate
+        the stored posterior covariance matrix."""
+        centres = 0.5 * (gp.edges[:-1] + gp.edges[1:])
+        cross = gp.posterior_cross_covariance(centres)
+        post = gp.posterior_covariance
+        np.testing.assert_allclose(cross, post, atol=1e-5)
+
+    def test_shape(self, gp):
+        x = np.array([110.0, 130.0, 150.0])
+        cross = gp.posterior_cross_covariance(x)
+        assert cross.shape == (3, gp.nbins)
+
+    def test_single_point(self, gp):
+        x = np.array([125.0])
+        cross = gp.posterior_cross_covariance(x)
+        assert cross.shape == (1, gp.nbins)
+        assert np.all(np.isfinite(cross))
+
+
+# ── EigenmodeConstraint continuous evaluation ────────────────────────
+
+class TestEigenmodeDeformationAt:
+    """deformation_at(z, x) extends the discrete deformation to
+    arbitrary points via the Nystrom formula."""
+
+    @pytest.fixture(scope="class")
+    def ec(self):
+        h = _make_exponential_histogram(500, 20)
+        gp = GPTemplate(h, kernel=GPKernel.MATERN_52,
+                         optimize_hyperparameters=False)
+        return EigenmodeConstraint(gp, variance_threshold=0.99)
+
+    @pytest.fixture(scope="class")
+    def centres(self, ec):
+        return 0.5 * (ec._gp_nominal.edges[:-1] + ec._gp_nominal.edges[1:])
+
+    def test_zero_z_is_identity(self, ec):
+        """deformation_at(0, x) = 1 for any x."""
+        lo = ec._gp_nominal.edges[0]
+        hi = ec._gp_nominal.edges[-1]
+        x = np.linspace(lo + 0.1, hi - 0.1, 50)
+        z = np.zeros(ec.n_modes)
+        np.testing.assert_allclose(ec.deformation_at(z, x), 1.0, atol=1e-14)
+
+    def test_at_centres_matches_discrete(self, ec, centres):
+        """At bin centres, deformation_at must agree with deformation."""
+        rng = np.random.default_rng(42)
+        z = rng.normal(0, 0.5, ec.n_modes)
+        cont = ec.deformation_at(z, centres)
+        disc = ec.deformation(z)
+        np.testing.assert_allclose(cont, disc, rtol=1e-5)
+
+    def test_always_positive(self, ec):
+        """exp() ensures positivity for any z at any point."""
+        rng = np.random.default_rng(99)
+        lo = ec._gp_nominal.edges[0]
+        hi = ec._gp_nominal.edges[-1]
+        x = np.linspace(lo + 0.1, hi - 0.1, 100)
+        for _ in range(5):
+            z = rng.normal(0, 2, ec.n_modes)
+            assert np.all(ec.deformation_at(z, x) > 0)
+
+    def test_smooth_on_fine_grid(self, ec):
+        """The deformation should vary smoothly as a function of x."""
+        rng = np.random.default_rng(42)
+        z = rng.normal(0, 1, ec.n_modes)
+        lo = ec._gp_nominal.edges[0]
+        hi = ec._gp_nominal.edges[-1]
+        x = np.linspace(lo + 0.5, hi - 0.5, 200)
+        d = ec.deformation_at(z, x)
+        # Smoothness: second differences should be small
+        dd = np.abs(np.diff(d, n=2))
+        assert np.max(dd) < 1.0, "Large jumps in continuous deformation"
+
+    def test_wrong_z_shape_raises(self, ec):
+        x = np.array([120.0])
+        with pytest.raises(ValueError, match="shape"):
+            ec.deformation_at(np.zeros(ec.n_modes + 1), x)
+
+
+class TestEigenmodeDeformationAtWithSystematics:
+    """deformation_at with systematic directions extends the systematic
+    component to arbitrary points using the GP variation fits."""
+
+    def test_systematics_change_continuous_deformation(self):
+        h_nom = _make_exponential_histogram(500, 20)
+        h_up = _make_slope_varied_histogram(+0.01, 500, 20, seed=200)
+        h_dn = _make_slope_varied_histogram(-0.01, 500, 20, seed=300)
+        gp_nom = GPTemplate(h_nom, kernel=GPKernel.MATERN_52,
+                            optimize_hyperparameters=False)
+        gp_up = GPTemplate(h_up, kernel=GPKernel.MATERN_52,
+                           optimize_hyperparameters=False)
+        gp_dn = GPTemplate(h_dn, kernel=GPKernel.MATERN_52,
+                           optimize_hyperparameters=False)
+
+        sd = make_systematic_direction("JES", gp_nom, gp_up, gp_dn)
+        ec_stat = EigenmodeConstraint(gp_nom, variance_threshold=0.99)
+        ec_comb = EigenmodeConstraint(
+            gp_nom, systematics=[sd], variance_threshold=0.99,
+        )
+
+        rng = np.random.default_rng(42)
+        z_stat = rng.normal(0, 1, ec_stat.n_modes)
+        z_comb = rng.normal(0, 1, ec_comb.n_modes)
+        x = np.linspace(105, 155, 50)
+
+        d_stat = ec_stat.deformation_at(z_stat, x)
+        d_comb = ec_comb.deformation_at(z_comb, x)
+
+        # Different numbers of modes means different deformations
+        assert not np.allclose(d_stat, d_comb)
+        # Both should be positive and finite
+        assert np.all(d_stat > 0) and np.all(d_comb > 0)
+        assert np.all(np.isfinite(d_stat)) and np.all(np.isfinite(d_comb))
+
+
+class TestDeformedDensity:
+    """deformed_density(z, x) = nominal_density(x) * deformation_at(z, x)."""
+
+    @pytest.fixture(scope="class")
+    def ec(self):
+        h = _make_exponential_histogram(500, 20)
+        gp = GPTemplate(h, kernel=GPKernel.MATERN_52,
+                         optimize_hyperparameters=False)
+        return EigenmodeConstraint(gp, variance_threshold=0.99)
+
+    def test_zero_z_gives_nominal(self, ec):
+        """At z=0, deformed density should equal the nominal GP density."""
+        lo = ec._gp_nominal.edges[0]
+        hi = ec._gp_nominal.edges[-1]
+        x = np.linspace(lo + 0.5, hi - 0.5, 50)
+        z = np.zeros(ec.n_modes)
+        deformed = ec.deformed_density(z, x)
+        nominal = ec._gp_nominal.evaluate_density(x)
+        np.testing.assert_allclose(deformed, nominal, rtol=1e-12)
+
+    def test_non_negative(self, ec):
+        rng = np.random.default_rng(42)
+        lo = ec._gp_nominal.edges[0]
+        hi = ec._gp_nominal.edges[-1]
+        x = np.linspace(lo + 0.5, hi - 0.5, 100)
+        z = rng.normal(0, 2, ec.n_modes)
+        assert np.all(ec.deformed_density(z, x) >= 0)
+
+    def test_product_decomposition(self, ec):
+        """Must equal evaluate_density(x) * deformation_at(z, x)."""
+        rng = np.random.default_rng(42)
+        z = rng.normal(0, 1, ec.n_modes)
+        lo = ec._gp_nominal.edges[0]
+        hi = ec._gp_nominal.edges[-1]
+        x = np.linspace(lo + 0.5, hi - 0.5, 30)
+        deformed = ec.deformed_density(z, x)
+        manual = ec._gp_nominal.evaluate_density(x) * ec.deformation_at(z, x)
+        np.testing.assert_allclose(deformed, manual, rtol=1e-12)
+
+
 class TestWeightedEvents:
     """Verify GP correctly handles weighted MC events via sumw2."""
 
