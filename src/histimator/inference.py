@@ -20,18 +20,27 @@ from histimator.likelihood import BinnedNLL, fit
 from histimator.model import Model
 
 
+def _make_nll(model: Model, extended: bool = True, unbinned: bool = False):
+    """Construct the appropriate NLL object."""
+    if unbinned:
+        from histimator.likelihood import UnbinnedNLL
+        return UnbinnedNLL(model)
+    return BinnedNLL(model, extended=extended)
+
+
 def _profile_nll(
     model: Model,
     poi_name: str,
     poi_value: float,
     extended: bool = True,
+    unbinned: bool = False,
 ) -> float:
     """Minimise the NLL with the POI fixed at a given value.
 
     All other parameters (nuisance parameters) are profiled (floated).
     Returns the minimum NLL value.
     """
-    nll = BinnedNLL(model, extended=extended)
+    nll = _make_nll(model, extended=extended, unbinned=unbinned)
     par_names = nll._par_names
     start = [p.value for p in model.parameters]
 
@@ -60,6 +69,7 @@ def profile_likelihood_ratio(
     poi_value: float,
     unconditional_nll: float | None = None,
     extended: bool = True,
+    unbinned: bool = False,
 ) -> float:
     """Compute the profile likelihood ratio test statistic.
 
@@ -79,16 +89,20 @@ def profile_likelihood_ratio(
         If provided, skip the unconditional fit and use this value.
     extended : bool
         Use extended likelihood.
+    unbinned : bool
+        If True, use the unbinned extended likelihood.
 
     Returns
     -------
     float
         The test statistic value (non-negative).
     """
-    conditional = _profile_nll(model, poi_name, poi_value, extended=extended)
+    conditional = _profile_nll(
+        model, poi_name, poi_value, extended=extended, unbinned=unbinned,
+    )
 
     if unconditional_nll is None:
-        result = fit(model, extended=extended)
+        result = fit(model, extended=extended, unbinned=unbinned)
         unconditional_nll = result.nll_min
 
     return max(0.0, 2.0 * (conditional - unconditional_nll))
@@ -99,6 +113,7 @@ def upper_limit(
     poi_name: str,
     cl: float = 0.95,
     extended: bool = True,
+    unbinned: bool = False,
     scan_range: tuple[float, float] | None = None,
     tolerance: float = 1e-3,
 ) -> float:
@@ -118,6 +133,8 @@ def upper_limit(
         Confidence level (default 0.95 for 95% CL).
     extended : bool
         Use extended likelihood.
+    unbinned : bool
+        If True, use the unbinned extended likelihood.
     scan_range : tuple[float, float] or None
         Search range for the upper limit. If None, automatically determined.
     tolerance : float
@@ -132,7 +149,7 @@ def upper_limit(
     threshold = stats.chi2.ppf(cl, df=1)
 
     # Unconditional fit
-    result = fit(model, extended=extended)
+    result = fit(model, extended=extended, unbinned=unbinned)
     mu_hat = result.bestfit[poi_name]
     nll_min = result.nll_min
     mu_error = result.errors[poi_name]
@@ -151,7 +168,8 @@ def upper_limit(
     # Root-finding: find mu where t(mu) = threshold
     def objective(mu):
         t = profile_likelihood_ratio(
-            model, poi_name, mu, unconditional_nll=nll_min, extended=extended
+            model, poi_name, mu, unconditional_nll=nll_min,
+            extended=extended, unbinned=unbinned,
         )
         return t - threshold
 
@@ -179,6 +197,7 @@ def discovery_significance(
     model: Model,
     poi_name: str,
     extended: bool = True,
+    unbinned: bool = False,
 ) -> tuple[float, float]:
     """Compute the discovery significance (Z-value and p-value).
 
@@ -201,6 +220,8 @@ def discovery_significance(
         Name of the parameter of interest.
     extended : bool
         Use extended likelihood.
+    unbinned : bool
+        If True, use the unbinned extended likelihood.
 
     Returns
     -------
@@ -210,7 +231,7 @@ def discovery_significance(
         One-sided p-value for rejecting the background-only hypothesis.
     """
     # Unconditional fit
-    result = fit(model, extended=extended)
+    result = fit(model, extended=extended, unbinned=unbinned)
     mu_hat = result.bestfit[poi_name]
     nll_min = result.nll_min
 
@@ -219,7 +240,8 @@ def discovery_significance(
 
     # Background-only NLL (POI = 0)
     q0 = profile_likelihood_ratio(
-        model, poi_name, 0.0, unconditional_nll=nll_min, extended=extended
+        model, poi_name, 0.0, unconditional_nll=nll_min,
+        extended=extended, unbinned=unbinned,
     )
 
     z = np.sqrt(q0)

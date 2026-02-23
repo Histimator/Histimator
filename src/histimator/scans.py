@@ -31,17 +31,26 @@ from histimator.model import Model
 # Internal helpers
 # ------------------------------------------------------------------
 
+def _make_nll(model: Model, extended: bool = True, unbinned: bool = False):
+    """Construct the appropriate NLL object."""
+    if unbinned:
+        from histimator.likelihood import UnbinnedNLL
+        return UnbinnedNLL(model)
+    return BinnedNLL(model, extended=extended)
+
+
 def _profile_nll_at(
     model: Model,
     fixed_params: dict[str, float],
     extended: bool = True,
+    unbinned: bool = False,
 ) -> float:
     """Minimise the NLL with one or more parameters fixed.
 
     All parameters not in fixed_params are profiled (floated).
     Returns the minimum NLL value.
     """
-    nll = BinnedNLL(model, extended=extended)
+    nll = _make_nll(model, extended=extended, unbinned=unbinned)
     par_names = nll._par_names
     start = [p.value for p in model.parameters]
 
@@ -72,6 +81,7 @@ def likelihood_scan_1d(
     bounds: tuple[float, float] | None = None,
     n_points: int = 21,
     extended: bool = True,
+    unbinned: bool = False,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Profile -2*delta(ln L) as a function of one parameter.
 
@@ -91,6 +101,8 @@ def likelihood_scan_1d(
         Number of scan points.
     extended : bool
         Use extended likelihood.
+    unbinned : bool
+        If True, use the unbinned extended likelihood.
 
     Returns
     -------
@@ -100,7 +112,7 @@ def likelihood_scan_1d(
         -2 * (ln L(par) - ln L_max), non-negative.
     """
     # Global minimum
-    result = fit(model, extended=extended)
+    result = fit(model, extended=extended, unbinned=unbinned)
     nll_min = result.nll_min
 
     if bounds is None:
@@ -112,7 +124,9 @@ def likelihood_scan_1d(
     delta_nll = np.zeros(n_points)
 
     for i, val in enumerate(par_values):
-        nll_cond = _profile_nll_at(model, {par_name: val}, extended=extended)
+        nll_cond = _profile_nll_at(
+            model, {par_name: val}, extended=extended, unbinned=unbinned,
+        )
         delta_nll[i] = max(0.0, 2.0 * (nll_cond - nll_min))
 
     return par_values, delta_nll
@@ -189,6 +203,7 @@ def likelihood_scan_2d(
     n_points_x: int = 11,
     n_points_y: int = 11,
     extended: bool = True,
+    unbinned: bool = False,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Profile -2*delta(ln L) on a 2D grid of two parameters.
 
@@ -207,6 +222,8 @@ def likelihood_scan_2d(
         Number of grid points per axis.
     extended : bool
         Use extended likelihood.
+    unbinned : bool
+        If True, use the unbinned extended likelihood.
 
     Returns
     -------
@@ -218,7 +235,7 @@ def likelihood_scan_2d(
         Shape (n_points_x, n_points_y). delta_nll[i, j] is the
         profiled -2*delta(ln L) at (x_values[i], y_values[j]).
     """
-    result = fit(model, extended=extended)
+    result = fit(model, extended=extended, unbinned=unbinned)
     nll_min = result.nll_min
 
     if bounds_x is None:
@@ -238,7 +255,8 @@ def likelihood_scan_2d(
     for i, xv in enumerate(x_values):
         for j, yv in enumerate(y_values):
             nll_cond = _profile_nll_at(
-                model, {par_x: xv, par_y: yv}, extended=extended,
+                model, {par_x: xv, par_y: yv},
+                extended=extended, unbinned=unbinned,
             )
             dnll_grid[i, j] = max(0.0, 2.0 * (nll_cond - nll_min))
 
@@ -252,6 +270,7 @@ def likelihood_scan_2d(
 def goodness_of_fit(
     model: Model,
     extended: bool = True,
+    unbinned: bool = False,
 ) -> tuple[float, int, float]:
     """Saturated-model goodness-of-fit test.
 
@@ -269,6 +288,10 @@ def goodness_of_fit(
         Fully constructed model with data.
     extended : bool
         Use extended likelihood.
+    unbinned : bool
+        If True, use the unbinned extended likelihood for the best-fit.
+        The saturated-model NLL is not yet implemented for unbinned
+        data, so this will raise NotImplementedError.
 
     Returns
     -------
@@ -279,29 +302,48 @@ def goodness_of_fit(
     p_value : float
         The p-value from the chi2 distribution.
     """
-    # Best-fit NLL
-    result = fit(model, extended=extended)
-    nll_bestfit = result.nll_min
+    # Best-fit
+    result = fit(model, extended=extended, unbinned=unbinned)
 
-    # Saturated model NLL: expected = observed in every bin
-    data = model.data
-    # Poisson log-likelihood when expected = observed:
-    # sum_i [k_i * ln(k_i) - k_i - ln(k_i!)]
-    # We also need the extended term and constraint terms at their
-    # constraint-minimum values. The constraint minimum is at
-    # alpha = 0 for N(0,1), gamma = 1 for N(1,sigma), etc.,
-    # contributing 0 to the constraint penalty.
-    nll_saturated = -float(_poisson_logpdf(data, data).sum())
+    if unbinned:
+        # For unbinned data, the fit is done with the unbinned likelihood
+        # (better parameter estimates), but the GoF test itself is a
+        # binned deviance computed on post-hoc binned events versus
+        # expected yields at the best-fit parameters.  This is standard
+        # practice: the unbinned fit constrains the parameters, and the
+        # binned chi2 tests the shape agreement.
+        parts = []
+        for ch in model.channels:
+            events = ch.unbinned_data
+            if events is None:
+                raise ValueError(
+                    f"Channel '{ch.name}' has no unbinned data. "
+                    f"Call channel.set_unbinned_data(events) first."
+                )
+            binned, _ = np.histogram(events, bins=ch.edges)
+            parts.append(binned.astype(np.float64))
+        data = np.concatenate(parts)
+        expected = model.expected(result.bestfit)
 
-    if extended:
-        data_total = float(data.sum())
-        nll_saturated -= float(
-            _poisson_logpdf(
-                np.array([data_total]), np.array([data_total])
-            ).item()
-        )
+        # Poisson deviance: 2 * sum [n_i * log(n_i / nu_i) - (n_i - nu_i)]
+        # with the convention 0 * log(0) = 0.
+        nll_bestfit_binned = -float(_poisson_logpdf(data, expected).sum())
+        nll_saturated = -float(_poisson_logpdf(data, data).sum())
+        chi2_val = max(0.0, 2.0 * (nll_bestfit_binned - nll_saturated))
+    else:
+        nll_bestfit = result.nll_min
+        data = model.data
+        nll_saturated = -float(_poisson_logpdf(data, data).sum())
 
-    chi2_val = max(0.0, 2.0 * (nll_bestfit - nll_saturated))
+        if extended:
+            data_total = float(data.sum())
+            nll_saturated -= float(
+                _poisson_logpdf(
+                    np.array([data_total]), np.array([data_total])
+                ).item()
+            )
+
+        chi2_val = max(0.0, 2.0 * (nll_bestfit - nll_saturated))
 
     # Count floated parameters
     n_floated = sum(1 for p in model.parameters if not p.fixed)

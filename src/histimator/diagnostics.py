@@ -33,6 +33,7 @@ References
 def prefit_postfit_yields(
     model: Model,
     extended: bool = True,
+    unbinned: bool = False,
 ) -> dict:
     """Compute per-channel, per-sample pre-fit and post-fit yields.
 
@@ -45,6 +46,8 @@ def prefit_postfit_yields(
         Fully constructed model with data.
     extended : bool
         Use extended likelihood for the fit.
+    unbinned : bool
+        If True, use the unbinned extended likelihood for the fit.
 
     Returns
     -------
@@ -55,7 +58,7 @@ def prefit_postfit_yields(
     """
     # Get nominal and best-fit parameters
     nominal_params = model.nominal_values()
-    result = fit(model, extended=extended)
+    result = fit(model, extended=extended, unbinned=unbinned)
     bestfit_params = result.bestfit
 
     output = {}
@@ -208,6 +211,7 @@ def nuisance_pulls(
 def nuisance_parameter_pulls(
     model: Model,
     extended: bool = True,
+    unbinned: bool = False,
 ) -> dict[str, dict[str, float]]:
     """Compute pulls and constraints for all nuisance parameters.
 
@@ -227,6 +231,8 @@ def nuisance_parameter_pulls(
         Fully constructed model with data.
     extended : bool
         Use extended likelihood.
+    unbinned : bool
+        If True, use the unbinned extended likelihood.
 
     Returns
     -------
@@ -235,7 +241,7 @@ def nuisance_parameter_pulls(
                     'bestfit': float, 'error': float}}.
         Only constrained NPs are included (not POI or free params).
     """
-    result = fit(model, extended=extended)
+    result = fit(model, extended=extended, unbinned=unbinned)
 
     # Identify constrained parameters (NormSys, HistoSys alphas)
     constrained_names = set()
@@ -276,6 +282,7 @@ def impacts(
     model: Model,
     poi_name: str,
     extended: bool = True,
+    unbinned: bool = False,
 ) -> list[dict]:
     """Compute the impact of each nuisance parameter on the POI.
 
@@ -295,6 +302,8 @@ def impacts(
         Name of the parameter of interest.
     extended : bool
         Use extended likelihood.
+    unbinned : bool
+        If True, use the unbinned extended likelihood.
 
     Returns
     -------
@@ -302,7 +311,7 @@ def impacts(
         Sorted list of {name, impact_up, impact_down, bestfit, error}.
     """
     # Nominal fit
-    result = fit(model, extended=extended)
+    result = fit(model, extended=extended, unbinned=unbinned)
     mu_hat = result.bestfit[poi_name]
 
     # Identify constrained NPs
@@ -320,11 +329,13 @@ def impacts(
 
         # Up variation: fix NP at theta_hat + sigma, refit
         mu_up = _refit_with_fixed(
-            model, poi_name, np_name, theta_hat + sigma, extended,
+            model, poi_name, np_name, theta_hat + sigma,
+            extended=extended, unbinned=unbinned,
         )
         # Down variation: fix NP at theta_hat - sigma, refit
         mu_down = _refit_with_fixed(
-            model, poi_name, np_name, theta_hat - sigma, extended,
+            model, poi_name, np_name, theta_hat - sigma,
+            extended=extended, unbinned=unbinned,
         )
 
         impact_list.append({
@@ -350,9 +361,14 @@ def _refit_with_fixed(
     fixed_np_name: str,
     fixed_np_value: float,
     extended: bool = True,
+    unbinned: bool = False,
 ) -> float:
     """Refit the model with one NP fixed, return the POI best-fit value."""
-    nll = BinnedNLL(model, extended=extended)
+    if unbinned:
+        from histimator.likelihood import UnbinnedNLL
+        nll = UnbinnedNLL(model)
+    else:
+        nll = BinnedNLL(model, extended=extended)
     par_names = nll._par_names
     start = [p.value for p in model.parameters]
 
