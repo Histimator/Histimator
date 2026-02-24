@@ -2,6 +2,7 @@
 from histimator.bspline_template import BSplineTemplate
 from histimator.channels import Channel
 from histimator.cls import cls_expected_band, cls_observed, upper_limit_cls
+from histimator.cox_model import HybridCoxModel, ObservationModel, PoissonCountModel
 from histimator.data import Dataset
 from histimator.diagnostics import (
     impacts,
@@ -42,6 +43,9 @@ __all__ = [
     "BSplineTemplate",
     "GPTemplate",
     "GPKernel",
+    "ObservationModel",
+    "PoissonCountModel",
+    "HybridCoxModel",
     "EigenmodeConstraint",
     "SystematicDirection",
     "make_systematic_direction",

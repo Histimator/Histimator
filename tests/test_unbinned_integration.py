@@ -102,6 +102,84 @@ def _bkg_only_events(n_bkg=200, seed=99):
 
 
 # ===================================================================
+# Density normalization precondition
+# ===================================================================
+
+class TestDensityNormalizationPrecondition:
+    """The unbinned extended likelihood is mathematically correct only
+    when evaluate_density integrates to unity for every template.  If a
+    template's density integrates to 0.95 instead, each event contributes
+    a bias of log(0.95) to the log-likelihood, and that bias accumulates
+    linearly with the number of events.  For 200 events the total NLL
+    shift would be ~10 units, easily enough to bias mu_hat by several sigma.
+
+    BinnedTemplate normalization is exact by construction, so it is
+    verified via the discrete sum.  GP normalization is approximate
+    (the rate is fitted on a grid and then renormalized), so it is
+    verified via scipy quadrature on the smooth density."""
+
+    def test_binned_signal_density_exact(self):
+        """BinnedTemplate: sum(density_j * w_j) = 1 exactly."""
+        from histimator.templates import BinnedTemplate
+        bt = BinnedTemplate(Histogram(_sig_template(20.0), EDGES))
+        integral = np.sum(bt.density() * np.diff(EDGES))
+        np.testing.assert_allclose(integral, 1.0, rtol=1e-14)
+
+    def test_binned_background_density_exact(self):
+        from histimator.templates import BinnedTemplate
+        bt = BinnedTemplate(Histogram(_bkg_template(200.0), EDGES))
+        integral = np.sum(bt.density() * np.diff(EDGES))
+        np.testing.assert_allclose(integral, 1.0, rtol=1e-14)
+
+    def test_gp_signal_density_normalized(self):
+        """GPTemplate density should integrate to 1 within 1%."""
+        from scipy.integrate import quad
+
+        from histimator.gp_template import GPKernel, GPTemplate
+        h = Histogram(_sig_template(20.0), EDGES)
+        gp = GPTemplate(h, kernel=GPKernel.MATERN_52,
+                        optimize_hyperparameters=False)
+        integral, _ = quad(lambda x: gp.evaluate_density(np.array([x]))[0],
+                           EDGES[0], EDGES[-1], limit=100)
+        np.testing.assert_allclose(integral, 1.0, rtol=0.01)
+
+    def test_gp_background_density_normalized(self):
+        from scipy.integrate import quad
+
+        from histimator.gp_template import GPKernel, GPTemplate
+        h = Histogram(_bkg_template(200.0), EDGES)
+        gp = GPTemplate(h, kernel=GPKernel.MATERN_52,
+                        optimize_hyperparameters=False)
+        integral, _ = quad(lambda x: gp.evaluate_density(np.array([x]))[0],
+                           EDGES[0], EDGES[-1], limit=100)
+        np.testing.assert_allclose(integral, 1.0, rtol=0.01)
+
+    def test_gp_normalization_bias_bounded(self):
+        """Verify that the GP normalization error is small enough that
+        the accumulated NLL bias over a typical event sample is negligible.
+
+        For n events, a density normalization error of epsilon causes an
+        NLL bias of approximately n * |log(1 + epsilon)| ~ n * |epsilon|.
+        We require this to be less than 0.5 for 500 events, meaning
+        |epsilon| < 1e-3.  The GP renormalization step in GPTemplate
+        ensures this is met for typical histogram shapes."""
+        from scipy.integrate import quad
+
+        from histimator.gp_template import GPKernel, GPTemplate
+        h = Histogram(_bkg_template(200.0), EDGES)
+        gp = GPTemplate(h, kernel=GPKernel.MATERN_52,
+                        optimize_hyperparameters=False)
+        integral, _ = quad(lambda x: gp.evaluate_density(np.array([x]))[0],
+                           EDGES[0], EDGES[-1], limit=100)
+        n_events = 500
+        nll_bias = n_events * abs(np.log(integral))
+        assert nll_bias < 0.5, (
+            f"GP density integral = {integral:.8f}, "
+            f"NLL bias over {n_events} events = {nll_bias:.4f}"
+        )
+
+
+# ===================================================================
 # Test statistics: unbinned mode
 # ===================================================================
 
