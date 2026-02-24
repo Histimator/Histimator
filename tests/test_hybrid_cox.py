@@ -418,7 +418,7 @@ class TestPoissonCountModelRegression:
         silently change any existing result.
         """
         try:
-            from gp_template import _laplace_mode as legacy_laplace_mode
+            from histimator.gp_template import _laplace_mode as legacy_laplace_mode
         except ImportError:
             pytest.skip(
                 "gp_template not importable from test environment; "

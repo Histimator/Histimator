@@ -317,6 +317,7 @@ def _cox_laplace_mode(
         grad = obs_grad - prior_grad
 
         b = k_inv + np.diag(w_diag)
+        b += 1e-8 * np.eye(len(b))
 
         try:
             delta = solve(b, grad, assume_a="pos")

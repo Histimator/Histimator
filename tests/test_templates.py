@@ -411,10 +411,17 @@ def _bkg_hist():
 TEMPLATE_TYPES = ["binned", "gp", "bspline"]
 
 
+def _tt_kwargs(tt):
+    """Return template_kwargs that skip expensive hyperparameter optimisation."""
+    if tt == "gp":
+        return {"optimize_hyperparameters": False}
+    return {}
+
+
 class TestFromHistogramFactory:
     @pytest.mark.parametrize("tt", TEMPLATE_TYPES)
     def test_returns_correct_template_type(self, tt):
-        s = Sample.from_histogram("sig", _sig_hist(), template_type=tt)
+        s = Sample.from_histogram("sig", _sig_hist(), template_type=tt, **_tt_kwargs(tt))
         if tt == "binned":
             assert isinstance(s.template, BinnedTemplate)
         elif tt == "gp":
@@ -424,24 +431,24 @@ class TestFromHistogramFactory:
 
     @pytest.mark.parametrize("tt", TEMPLATE_TYPES)
     def test_template_satisfies_protocol(self, tt):
-        s = Sample.from_histogram("sig", _sig_hist(), template_type=tt)
+        s = Sample.from_histogram("sig", _sig_hist(), template_type=tt, **_tt_kwargs(tt))
         assert isinstance(s.template, Template)
 
     @pytest.mark.parametrize("tt", TEMPLATE_TYPES)
     def test_histogram_accessible(self, tt):
         """sample.histogram returns the original Histogram for all types."""
         h = _sig_hist()
-        s = Sample.from_histogram("sig", h, template_type=tt)
+        s = Sample.from_histogram("sig", h, template_type=tt, **_tt_kwargs(tt))
         assert s.histogram is h
 
     @pytest.mark.parametrize("tt", TEMPLATE_TYPES)
     def test_counts_positive(self, tt):
-        s = Sample.from_histogram("sig", _sig_hist(), template_type=tt)
+        s = Sample.from_histogram("sig", _sig_hist(), template_type=tt, **_tt_kwargs(tt))
         assert np.all(s.template.counts() > 0)
 
     @pytest.mark.parametrize("tt", TEMPLATE_TYPES)
     def test_density_integrates_to_one(self, tt):
-        s = Sample.from_histogram("sig", _sig_hist(), template_type=tt)
+        s = Sample.from_histogram("sig", _sig_hist(), template_type=tt, **_tt_kwargs(tt))
         widths = np.diff(s.template.edges)
         integral = np.sum(s.template.density() * widths)
         np.testing.assert_allclose(integral, 1.0, rtol=0.05)
@@ -459,7 +466,7 @@ class TestEvaluateDensityAllTemplateTypes:
     @pytest.mark.parametrize("tt", TEMPLATE_TYPES)
     def test_at_centres_agrees_with_density(self, tt):
         """evaluate_density at bin centres should closely match density()."""
-        s = Sample.from_histogram("sig", _sig_hist(), template_type=tt)
+        s = Sample.from_histogram("sig", _sig_hist(), template_type=tt, **_tt_kwargs(tt))
         t = s.template
         centres = 0.5 * (t.edges[:-1] + t.edges[1:])
         # For GP and BSpline the match is approximate due to smoothing;
@@ -472,7 +479,7 @@ class TestEvaluateDensityAllTemplateTypes:
     @pytest.mark.parametrize("tt", TEMPLATE_TYPES)
     def test_integrates_to_one(self, tt):
         """Numerical quadrature of evaluate_density should approximate 1."""
-        s = Sample.from_histogram("sig", _sig_hist(), template_type=tt)
+        s = Sample.from_histogram("sig", _sig_hist(), template_type=tt, **_tt_kwargs(tt))
         t = s.template
         lo, hi = t.edges[0], t.edges[-1]
         x_fine = np.linspace(lo + 1e-6, hi - 1e-6, 5000)
@@ -483,7 +490,7 @@ class TestEvaluateDensityAllTemplateTypes:
     @pytest.mark.parametrize("tt", TEMPLATE_TYPES)
     def test_non_negative(self, tt):
         """Density must be non-negative everywhere."""
-        s = Sample.from_histogram("sig", _sig_hist(), template_type=tt)
+        s = Sample.from_histogram("sig", _sig_hist(), template_type=tt, **_tt_kwargs(tt))
         t = s.template
         lo, hi = t.edges[0], t.edges[-1]
         x = np.linspace(lo, hi, 200)
@@ -499,7 +506,7 @@ class TestEvaluateDensityAllTemplateTypes:
         boundaries where the density should be small for a peaked
         distribution.
         """
-        s = Sample.from_histogram("sig", _sig_hist(), template_type=tt)
+        s = Sample.from_histogram("sig", _sig_hist(), template_type=tt, **_tt_kwargs(tt))
         t = s.template
         lo, hi = t.edges[0], t.edges[-1]
         if tt == "binned":
@@ -521,7 +528,7 @@ class TestFromDatasetFactory:
         rng = np.random.default_rng(42)
         ds = Dataset(rng.exponential(scale=2.0, size=500))
         edges = np.linspace(0, 8, 11)
-        s = Sample.from_dataset("sig", ds, edges=edges, template_type=tt)
+        s = Sample.from_dataset("sig", ds, edges=edges, template_type=tt, **_tt_kwargs(tt))
         assert isinstance(s.template, Template)
         assert s.template.nbins == 10
 
@@ -529,7 +536,7 @@ class TestFromDatasetFactory:
 class TestModifiersWithAllTemplateTypes:
     @pytest.mark.parametrize("tt", TEMPLATE_TYPES)
     def test_normfactor(self, tt):
-        s = Sample.from_histogram("sig", _sig_hist(), template_type=tt)
+        s = Sample.from_histogram("sig", _sig_hist(), template_type=tt, **_tt_kwargs(tt))
         s.add_normfactor("mu", nominal=1.0, bounds=(0.0, 5.0))
         base = s.template.counts()
         scaled = s.expected({"mu": 2.0})
@@ -537,7 +544,7 @@ class TestModifiersWithAllTemplateTypes:
 
     @pytest.mark.parametrize("tt", TEMPLATE_TYPES)
     def test_normsys(self, tt):
-        s = Sample.from_histogram("sig", _sig_hist(), template_type=tt)
+        s = Sample.from_histogram("sig", _sig_hist(), template_type=tt, **_tt_kwargs(tt))
         s.add_normsys("alpha", lo=0.9, hi=1.1)
         at_zero = s.expected({"alpha": 0.0})
         np.testing.assert_allclose(at_zero, s.template.counts(), rtol=1e-10)
@@ -555,9 +562,9 @@ class TestFullPipelineAllTemplateTypes:
         sig_h = _sig_hist()
         bkg_h = _bkg_hist()
 
-        sig = Sample.from_histogram("signal", sig_h, template_type=tt)
+        sig = Sample.from_histogram("signal", sig_h, template_type=tt, **_tt_kwargs(tt))
         sig.add_normfactor("mu", nominal=1.0, bounds=(0.0, 10.0))
-        bkg = Sample.from_histogram("background", bkg_h, template_type=tt)
+        bkg = Sample.from_histogram("background", bkg_h, template_type=tt, **_tt_kwargs(tt))
 
         ch = Channel("SR")
         ch.add_sample(sig)
@@ -589,6 +596,7 @@ class TestFullPipelineAllTemplateTypes:
             {"signal": sig_ds, "background": bkg_ds},
             edges=edges,
             template_type=tt,
+            **_tt_kwargs(tt),
         )
         assert len(ch.samples) == 2
         assert ch.data is not None
