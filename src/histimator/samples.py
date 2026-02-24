@@ -251,6 +251,18 @@ class Sample:
         from histimator.data import Dataset as _Dataset
         if not isinstance(dataset, _Dataset):
             raise TypeError(f"Expected Dataset, got {type(dataset).__name__}")
+
+        if template_type == "gp":
+            from histimator.gp_template import GPTemplate
+            if edges is None and strategy is not None:
+                from histimator.binning import auto_edges
+                edges = auto_edges(dataset, method=strategy)
+            elif edges is None:
+                raise ValueError("Either edges or strategy must be provided")
+            edges = np.asarray(edges, dtype=np.float64)
+            template = GPTemplate.from_dataset(dataset, edges=edges, **template_kwargs)
+            return cls(name, template)
+
         histogram = dataset.to_histogram(edges=edges, strategy=strategy)
         return cls.from_histogram(name, histogram, template_type=template_type,
                                   **template_kwargs)

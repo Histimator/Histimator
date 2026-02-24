@@ -779,6 +779,244 @@ class GPTemplate:
                                           self._x_min, self._x_max)
             return h_star @ self._beta_hat
 
+    @classmethod
+    def from_dataset(
+        cls,
+        dataset,
+        edges,
+        kernel: GPKernel = GPKernel.MATERN_32,
+        optimize_hyperparameters: bool = True,
+        log_sigma: float = 0.0,
+        log_ell: float | None = None,
+        beta_prior_variance: float = 100.0,
+        n_quad: int = 40,
+    ) -> GPTemplate:
+        """Construct a GPTemplate from raw event positions (hybrid Cox path).
+
+        Trains a log-GP on the exact event positions rather than on binned
+        counts, using the hybrid Cox log-likelihood
+
+            L(f) = sum_i f(x_i)  -  sum_j w_j exp(f(s_j))
+
+        where x_i are the N event positions and (s_j, w_j) are
+        Gauss-Legendre quadrature nodes and weights over the domain.
+        X_train is the augmented set [x_1 ... x_N, s_1 ... s_M].
+
+        This is theoretically superior to the histogram path when the bin
+        width is comparable to the fitted lengthscale, because it retains
+        exact event positions rather than smearing them across bins.
+
+        The returned object satisfies the full GPTemplate interface:
+        edges, nbins, counts(), density(), evaluate_density(x),
+        predict_log_rate(x), posterior_covariance, posterior_variance.
+        The _histogram attribute is populated from a coarse binning of the
+        events so that sample.histogram and modifier code work unchanged.
+
+        Parameters
+        ----------
+        dataset : Dataset
+            Raw event-level data.
+        edges : array-like
+            Bin edges defining the domain and user-facing output binning.
+        kernel : GPKernel
+            Covariance function.
+        optimize_hyperparameters : bool
+            If True, optimise log_sigma and log_ell by maximising the
+            Laplace marginal likelihood with Gaussian priors to prevent
+            short-lengthscale pathology.
+        log_sigma : float
+            Initial (or fixed) log amplitude.
+        log_ell : float or None
+            Initial (or fixed) log lengthscale.  Defaults to log(domain/5).
+        beta_prior_variance : float
+            Prior variance on B-spline mean function coefficients.
+        n_quad : int
+            Number of Gauss-Legendre quadrature nodes for the integral term.
+
+        Returns
+        -------
+        GPTemplate
+
+        Raises
+        ------
+        ValueError
+            If no events fall within the domain defined by edges.
+        """
+        from scipy.interpolate import BSpline as _BSpline
+
+        from histimator.cox_model import (
+            HybridCoxModel,
+            _cox_laplace_log_marginal,
+            _cox_laplace_mode,
+            gauss_legendre_quadrature,
+        )
+
+        edges = np.asarray(edges, dtype=np.float64)
+        events = np.asarray(dataset.values, dtype=np.float64)
+        x_min, x_max = float(edges[0]), float(edges[-1])
+        data_range = x_max - x_min
+        widths_user = np.diff(edges)
+        nbins = len(edges) - 1
+        user_centres = 0.5 * (edges[:-1] + edges[1:])
+
+        mask = (events >= x_min) & (events <= x_max)
+        events = events[mask]
+        if len(events) == 0:
+            raise ValueError(
+                "No events fall within the domain defined by edges. "
+                f"Domain: [{x_min}, {x_max}], "
+                f"event range: [{dataset.values.min():.3g}, "
+                f"{dataset.values.max():.3g}]"
+            )
+        n_events = len(events)
+
+        # Synthetic histogram for .histogram attribute and modifier compatibility
+        from histimator.histograms import Histogram as _Histogram
+        raw_counts, _ = np.histogram(events, bins=edges)
+        synth_hist = _Histogram(raw_counts.astype(float), edges)
+
+        quad_nodes, quad_weights = gauss_legendre_quadrature(x_min, x_max, n_quad)
+
+        # Augmented training set: events first (n_events rows),
+        # then quad nodes (n_quad rows).  HybridCoxModel requires this order.
+        x_aug = np.concatenate([events, quad_nodes])
+        n_aug = len(x_aug)
+
+        n_internal = max(n_quad // 4, 3)
+        h_aug, bspline_knots = _build_bspline_basis(
+            x_aug, x_min, x_max, n_internal=n_internal
+        )
+
+        # Constant mean log(N/domain).  Fitting beta from a coarse histogram
+        # is ill-conditioned when n_events << n_basis; the K_eff augmentation
+        # allows the GP to deviate from any constant regardless.
+        log_mean_rate = np.log(max(float(n_events) / data_range, 1e-10))
+        beta_hat = np.full(h_aug.shape[1], log_mean_rate)
+        mean_aug = np.full(n_aug, log_mean_rate)
+
+        if log_ell is None:
+            log_ell = np.log(data_range / 5.0)
+
+        obs_model = HybridCoxModel(n_events=n_events, quad_weights=quad_weights)
+
+        if optimize_hyperparameters:
+            prior_mean_le = np.log(data_range / 5.0)
+            prior_width_le = 1.5
+            prior_width_ls = 2.0
+
+            def neg_lml(params):
+                ls, le = float(params[0]), float(params[1])
+                k = _kernel_matrix(x_aug, x_aug, kernel, ls, le)
+                k_eff = _augment_kernel(k, h_aug, beta_prior_variance)
+                k_eff += 1e-6 * np.eye(n_aug)
+                val = _cox_laplace_log_marginal(obs_model, k_eff, mean_aug)
+                penalty = (
+                    0.5 * ((le - prior_mean_le) / prior_width_le) ** 2
+                    + 0.5 * (ls / prior_width_ls) ** 2
+                )
+                return (-val + penalty) if np.isfinite(val) else 1e10
+
+            best_nll = np.inf
+            best_params = [log_sigma, log_ell]
+            for init_le in [
+                np.log(data_range / 10),
+                np.log(data_range / 5),
+                np.log(data_range / 3),
+            ]:
+                for init_ls in [-0.5, 0.0, 0.5]:
+                    try:
+                        result = minimize(
+                            neg_lml,
+                            x0=[init_ls, init_le],
+                            method="Nelder-Mead",
+                            options={"maxiter": 200, "xatol": 0.01, "fatol": 0.1},
+                        )
+                        if result.fun < best_nll:
+                            best_nll = result.fun
+                            best_params = [float(result.x[0]), float(result.x[1])]
+                    except Exception:
+                        pass
+            log_sigma, log_ell = best_params
+
+        k = _kernel_matrix(x_aug, x_aug, kernel, log_sigma, log_ell)
+        k_eff = _augment_kernel(k, h_aug, beta_prior_variance)
+        k_eff += 1e-6 * np.eye(n_aug)
+
+        f_hat, w_hat = _cox_laplace_mode(obs_model, k_eff, mean_aug)
+
+        # Posterior covariance.  Event locations have zero Hessian diagonal
+        # so their uncertainty is determined by the GP prior alone.
+        w_sqrt = np.sqrt(np.maximum(w_hat, 1e-10))
+        b_mat = np.eye(n_aug) + (w_sqrt[:, None] * k_eff * w_sqrt[None, :])
+        try:
+            l_b = cho_factor(b_mat)
+            b_inv = cho_solve(l_b, np.eye(n_aug))
+            post_cov = k_eff - k_eff @ (
+                w_sqrt[:, None] * b_inv * w_sqrt[None, :]
+            ) @ k_eff
+        except np.linalg.LinAlgError:
+            post_cov = k_eff.copy()
+
+        # Fitted counts at user centres.  _scale uses the midpoint rule
+        # (consistent with density()), matching the convention in __init__.
+        def _predict(x):
+            x = np.asarray(x, dtype=np.float64)
+            k_star = _kernel_matrix(x, x_aug, kernel, log_sigma, log_ell)
+            h_star = _BSpline.design_matrix(x, bspline_knots, 3).toarray()
+            k_star_eff = k_star + beta_prior_variance * (h_star @ h_aug.T)
+            mean_star = h_star @ beta_hat
+            alpha = solve(k_eff, f_hat - mean_aug, assume_a="pos")
+            return mean_star + k_star_eff @ alpha
+
+        f_at_centres = _predict(user_centres)
+        fitted_rate = np.exp(np.clip(f_at_centres, -20, 20))
+        fitted_counts_raw = fitted_rate * widths_user
+        rate_at_quad = np.exp(np.clip(_predict(quad_nodes), -20, 20))
+        quad_integral = float(np.sum(quad_weights * rate_at_quad))
+        # Quadrature-based scale: normalises the continuous density
+        # (evaluate_density) so that its integral over the domain is 1.
+        scale = float(n_events) / max(quad_integral, 1e-10)
+        # Midpoint-based normalization: ensures sum(fitted_counts) == _total,
+        # so that density() integrates to 1 under the midpoint rule.
+        raw_total = float(np.sum(fitted_counts_raw))
+        fitted_counts = fitted_counts_raw * (float(n_events) / max(raw_total, 1e-10))
+
+        
+        # Assemble instance without calling __init__.
+        obj = object.__new__(cls)
+        obj._histogram = synth_hist
+        obj._edges = edges.copy()
+        obj._nbins = nbins
+        obj._widths = widths_user
+        obj._total = float(n_events)
+        obj._n_events = n_events
+        obj._kernel_type = kernel
+        obj._beta_prior_variance = float(beta_prior_variance)
+        obj._centres = x_aug          # X_train = [events, quad_nodes]
+        obj._obs_sumw2 = None
+        obj._use_data_mean = False
+        obj._use_bspline = True
+        obj._bspline_knots = bspline_knots
+        obj._bspline_degree = 3
+        obj._h = h_aug
+        obj._x_min = x_min
+        obj._x_max = x_max
+        obj._beta_hat = beta_hat
+        obj._mean_values = mean_aug
+        obj._mean_degree = -2         # bspline sentinel, matches __init__
+        obj._log_sigma = float(log_sigma)
+        obj._log_ell = float(log_ell)
+        obj._k = k_eff
+        obj._f_hat = f_hat
+        obj._mu_hat = None
+        obj._post_cov = post_cov
+        obj._post_var = np.diag(post_cov)
+        obj._scale = scale
+        obj._fitted_counts_raw = fitted_counts_raw
+        obj._fitted_counts = fitted_counts
+        obj._sumw2 = synth_hist.sumw2.copy()
+        return obj
+
     def predict_log_rate(self, x: np.ndarray) -> np.ndarray:
         """Predict the GP posterior mean of the log-rate at arbitrary points.
 
