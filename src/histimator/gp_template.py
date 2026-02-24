@@ -981,7 +981,7 @@ class GPTemplate:
         raw_total = float(np.sum(fitted_counts_raw))
         fitted_counts = fitted_counts_raw * (float(n_events) / max(raw_total, 1e-10))
 
-        
+
         # Assemble instance without calling __init__.
         obj = object.__new__(cls)
         obj._histogram = synth_hist
