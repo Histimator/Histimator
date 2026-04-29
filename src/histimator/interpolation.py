@@ -13,9 +13,17 @@ Interpolation codes
     Exponential in alpha, smooth everywhere, always positive.
 2 : Quadratic interpolation / linear extrapolation
     Parabolic near alpha=0 for smoothness, linear for |alpha|>1.
-3 : Polynomial interpolation / exponential extrapolation  (6th order)
-    A degree-6 polynomial for |alpha| <= 1, exponential outside.
-    This is the InterpCode=4 from ROOT HistFactory.
+3 : Polynomial interpolation / exponential extrapolation  (multiplicative)
+    A degree-6 polynomial for |alpha| <= 1 matching the exponential
+    extension's value, first, and second derivatives at the boundary.
+    Multiplicative form: result = nom * f(alpha). Matches ROOT
+    HistFactory FlexibleInterpVar::code 4 (used for NormSys).
+4 : Polynomial interpolation / linear extrapolation  (additive)
+    A degree-6 polynomial for |alpha| <= 1 matching the linear
+    extension's value, first derivative, and zero second derivative
+    at the boundary. Additive form: result = nom + p(alpha). Matches
+    ROOT HistFactory PiecewiseInterpolation::code 4 (used for HistoSys
+    in modern ATLAS/CMS analyses).
 
 References
 ----------
@@ -38,7 +46,8 @@ class InterpolationCode(enum.IntEnum):
     PIECEWISE_LINEAR = 0
     PIECEWISE_EXPONENTIAL = 1
     QUADRATIC_LINEAR = 2
-    POLY_EXPONENTIAL = 3
+    POLY_EXPONENTIAL = 3   # multiplicative (FlexibleInterpVar::code 4)
+    POLY_LINEAR = 4        # additive (PiecewiseInterpolation::code 4)
 
 
 def interpolate(
@@ -83,6 +92,8 @@ def interpolate(
         return _quadratic_linear(alpha, nom, d, u)
     elif code == InterpolationCode.POLY_EXPONENTIAL:
         return _poly_exponential(alpha, nom, d, u)
+    elif code == InterpolationCode.POLY_LINEAR:
+        return _poly_linear(alpha, nom, d, u)
     else:
         raise ValueError(f"Unknown interpolation code: {code}")
 
@@ -164,14 +175,23 @@ def _poly6_interp(
         log_up = np.where((up > 0) & (nom > 0), np.log(up / nom), 0.0)
         log_down = np.where((down > 0) & (nom > 0), np.log(down / nom), 0.0)
 
-    # Symmetric / antisymmetric combinations (at alpha_0 = 1)
-    # Value
+    # Symmetric / antisymmetric combinations of the boundary values and
+    # derivatives of the exponential extrapolation.
+    #
+    # Up branch:   f(alpha) = (up/nom)^alpha
+    #   f(+1) = up/nom,            f'(+1) = (up/nom) * log(up/nom),
+    #   f''(+1) = (up/nom) * log(up/nom)^2.
+    # Down branch: f(alpha) = (down/nom)^(-alpha)
+    #   f(-1) = down/nom,          f'(-1) = -(down/nom) * log(down/nom),
+    #   f''(-1) = (down/nom) * log(down/nom)^2.
+    #
+    # Hence S_n = (f^(n)(+1) + f^(n)(-1)) / 2 acquires the minus sign on
+    # the down term for odd n only. Histimator earlier swapped S_1 and
+    # A_1, breaking the polynomial slope at the down boundary.
     s0 = 0.5 * (up / nom + down / nom)
     a0 = 0.5 * (up / nom - down / nom)
-    # First derivative
-    s1 = 0.5 * (up / nom * log_up + down / nom * log_down)
-    a1 = 0.5 * (up / nom * log_up - down / nom * log_down)
-    # Second derivative
+    s1 = 0.5 * (up / nom * log_up - down / nom * log_down)
+    a1 = 0.5 * (up / nom * log_up + down / nom * log_down)
     s2 = 0.5 * (up / nom * log_up**2 + down / nom * log_down**2)
     a2 = 0.5 * (up / nom * log_up**2 - down / nom * log_down**2)
 
@@ -188,3 +208,46 @@ def _poly6_interp(
     x = alpha
     poly = 1.0 + x * (a + x * (b + x * (c + x * (d + x * (e + x * f)))))
     return nom * poly
+
+
+# ---------------------------------------------------------------------------
+# Scheme 4: 6th-order polynomial / linear extrapolation  (additive)
+# ---------------------------------------------------------------------------
+
+def _poly_linear(
+    alpha: float, nom: np.ndarray, down: np.ndarray, up: np.ndarray
+) -> np.ndarray:
+    """Additive 6th-order polynomial joining linear extension at alpha=+/-1.
+
+    Implements the HistFactory PiecewiseInterpolation::code 4 formula
+    used for HistoSys interpolation in modern ATLAS/CMS analyses:
+
+        result(alpha) = nom + p(alpha)
+
+    where p satisfies p(0)=0, p(+1)=eps_plus, p(-1)=-eps_minus, with
+    p'(+/-1) matching the linear extension slopes and p''(+/-1)=0.
+
+    Outside |alpha|<=1, p is linear: alpha*eps_plus for alpha>1,
+    alpha*eps_minus for alpha<-1.
+    """
+    eps_plus = up - nom
+    eps_minus = nom - down
+
+    if alpha >= 1.0:
+        return nom + alpha * eps_plus
+    if alpha <= -1.0:
+        return nom + alpha * eps_minus
+
+    # 6th-order polynomial inside [-1, 1].  c_3 = c_5 = 0 from the
+    # zero-curvature constraint at the boundaries; the remaining
+    # coefficients are linear in S_0 and A_0.
+    s0 = 0.5 * (eps_plus - eps_minus)
+    a0 = 0.5 * (eps_plus + eps_minus)
+    x = alpha
+    poly = (
+        a0 * x
+        + (15.0 / 8.0) * s0 * x * x
+        - (5.0 / 4.0) * s0 * x ** 4
+        + (3.0 / 8.0) * s0 * x ** 6
+    )
+    return nom + poly
