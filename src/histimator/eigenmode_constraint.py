@@ -314,6 +314,7 @@ class EigenmodeConstraint:
         """
         return 0.5 * float(np.sum(np.asarray(z) ** 2))
 
+    @property
     def bb_variance(self) -> np.ndarray:
         """Barlow--Beeston per-bin variance for comparison.
 
