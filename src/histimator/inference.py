@@ -47,7 +47,7 @@ def _profile_nll(
     from iminuit import Minuit
 
     m = Minuit(nll, start, name=par_names)
-    m.errordef = 1
+    m.errordef = Minuit.LIKELIHOOD
 
     for p in model.parameters:
         if p.bounds is not None:

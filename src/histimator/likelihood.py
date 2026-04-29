@@ -55,8 +55,11 @@ class BinnedNLL:
     model : Model
         A fully constructed model with data.
     extended : bool
-        If ``True`` (default), include the extended term that constrains
-        the total expected yield.
+        If ``True`` (default), use the standard extended Poisson likelihood
+        ``sum_j log Pois(k_j | mu_j)``: the per-bin Poisson product, which
+        already constrains the total normalisation.  If ``False``, subtract
+        the marginal Poisson on the total to leave the multinomial part
+        only (shape-only likelihood).
 
     Examples
     --------
@@ -127,12 +130,16 @@ class BinnedNLL:
         # Expected yields
         expected = self._model.expected(params)
 
-        # Poisson log-likelihood per bin
+        # Per-bin Poisson log-likelihood. This is already the standard
+        # extended Poisson likelihood: sum_j log Pois(k_j | mu_j) factors
+        # as log Pois(N | mu_tot) + log Multinomial(k | N, p), so the
+        # total-count constraint is built in.
         ll = _poisson_logpdf(self._data, expected).sum()
 
-        # Extended term: Poisson probability for the total count
-        if self._extended:
-            ll += _poisson_logpdf(
+        if not self._extended:
+            # Subtract the Poisson(N | mu_tot) factor to leave the
+            # multinomial (shape-only) likelihood.
+            ll -= _poisson_logpdf(
                 np.array([self._data_total]),
                 np.array([expected.sum()])
             ).item()
@@ -365,7 +372,7 @@ def fit(
             start_values[i] = minuit_kwargs[p.name]
 
     m = Minuit(nll, start_values, name=nll._par_names)
-    m.errordef = 1  # likelihood fit
+    m.errordef = Minuit.LIKELIHOOD  # 0.5: 1 sigma corresponds to dNLL = 0.5
 
     # Apply limits and fixed flags from model
     for p in model.parameters:

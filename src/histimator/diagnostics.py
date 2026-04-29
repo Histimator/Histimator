@@ -373,7 +373,7 @@ def _refit_with_fixed(
     start = [p.value for p in model.parameters]
 
     m = Minuit(nll, start, name=par_names)
-    m.errordef = 1
+    m.errordef = Minuit.LIKELIHOOD
 
     for p in model.parameters:
         if p.bounds is not None:

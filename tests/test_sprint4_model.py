@@ -206,7 +206,7 @@ class TestModel:
     def test_to_minuit_init(self):
         m = self._build_simple_model()
         init = m.to_minuit_init()
-        assert init["errordef"] == 1
+        assert init["errordef"] == 0.5
         assert init["mu"] == 1.0
         assert init["limit_mu"] == (0, 5)
 

@@ -40,7 +40,7 @@ def _make_nll(model: Model, unbinned: bool = False):
     """Construct the appropriate NLL object."""
     if unbinned:
         return UnbinnedNLL(model)
-    return BinnedNLL(model, extended=False)
+    return BinnedNLL(model, extended=True)
 
 
 def _fit_unconstrained(model: Model, poi_name: str, unbinned: bool = False):
@@ -52,12 +52,6 @@ def _fit_unconstrained(model: Model, poi_name: str, unbinned: bool = False):
     which may be negative (indicating a data deficit relative to
     background).  This helper temporarily widens the lower bound.
 
-    Uses extended=False for binned mode because the per-bin Poisson sum
-    already gives the standard extended likelihood (the -nu_i terms
-    provide the normalisation constraint).  This matches the textbook
-    formulas from CCGV.  In unbinned mode, the likelihood is always
-    extended.
-
     Returns (nll_min, mu_hat, fit_result).
     """
     nll = _make_nll(model, unbinned=unbinned)
@@ -67,7 +61,7 @@ def _fit_unconstrained(model: Model, poi_name: str, unbinned: bool = False):
     from iminuit import Minuit
 
     m = Minuit(nll, start, name=par_names)
-    m.errordef = 1
+    m.errordef = Minuit.LIKELIHOOD
 
     for p in model.parameters:
         if p.name == poi_name:
@@ -103,7 +97,7 @@ def _profile_nll(
     from iminuit import Minuit
 
     m = Minuit(nll, start, name=par_names)
-    m.errordef = 1
+    m.errordef = Minuit.LIKELIHOOD
 
     for p in model.parameters:
         if p.bounds is not None:

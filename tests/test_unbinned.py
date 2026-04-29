@@ -295,17 +295,28 @@ class TestUnbinnedVsBinned:
             f"Only {compatible}/{n_trials} seeds gave compatible results"
         )
 
-    def test_fine_bins_improves_agreement(self):
-        """With finer bins, binned should approach unbinned more closely."""
+    def test_fine_bins_consistent_with_unbinned(self):
+        """Coarse-bin and fine-bin fits should both recover mu close to
+        the unbinned fit, within the binning approximation tolerance.
+
+        Note: Histimator's BinnedTemplate.evaluate_density returns the
+        piecewise-constant density of whichever binning the template
+        was constructed on, so the unbinned fit on the coarse-binned
+        templates is *mathematically identical* to the coarse-binned
+        fit (modulo numerical precision). The fine-bin model uses a
+        different (finer) piecewise-constant density approximation, so
+        its mu_hat differs by a small binning artefact. Both should
+        agree with the unbinned result within a few per cent.
+        """
         events = _generate_events(mu_true=2.0, seed=42)
 
-        # Coarse bins (20 bins)
+        # Coarse bins (20 bins) -- same density as unbinned fit
         model_coarse = _scalar_model(events)
         r_ub = fit(model_coarse, unbinned=True)
         r_coarse = fit(model_coarse)
         diff_coarse = abs(r_ub.bestfit["mu"] - r_coarse.bestfit["mu"])
 
-        # Fine bins (60 bins)
+        # Fine bins (60 bins) -- different density approximation
         fine_edges = np.linspace(100, 160, 61)
         fine_sig_vals = np.exp(-0.5 * (
             (0.5*(fine_edges[:-1]+fine_edges[1:]) - 130)/ 8) ** 2) * np.diff(fine_edges)
@@ -328,10 +339,16 @@ class TestUnbinnedVsBinned:
         r_fine = fit(model_fine)
         diff_fine = abs(r_ub.bestfit["mu"] - r_fine.bestfit["mu"])
 
-        # Fine binning should give closer agreement (or at least not worse)
-        assert diff_fine <= diff_coarse * 1.5, (
-            f"Fine bins ({diff_fine:.4f}) not closer to unbinned "
-            f"than coarse bins ({diff_coarse:.4f})"
+        # Coarse fit must coincide with unbinned (same piecewise density).
+        assert diff_coarse < 1e-3, (
+            f"Coarse-bin fit should equal unbinned fit (same density), "
+            f"got diff={diff_coarse:.6f}"
+        )
+        # Fine fit deviates by the binning approximation but stays within
+        # a few per cent of the unbinned answer.
+        assert diff_fine < 0.1, (
+            f"Fine-bin fit deviates more than 10% from unbinned: "
+            f"diff={diff_fine:.4f}"
         )
 
 

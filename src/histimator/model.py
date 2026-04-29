@@ -75,7 +75,7 @@ class Model:
 
     def to_minuit_init(self) -> dict:
         """Build a kwargs dict for ``iminuit.Minuit``."""
-        init: dict = {"errordef": 1}  # likelihood fit
+        init: dict = {"errordef": 0.5}  # likelihood fit (NLL: 1 sigma = dNLL = 0.5)
         for p in self.parameters:
             init.update(p.to_minuit_init())
         return init
