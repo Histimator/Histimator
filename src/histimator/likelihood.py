@@ -20,6 +20,7 @@ from iminuit import Minuit
 
 from histimator.model import Model
 from histimator.samples import (
+    EigenmodeStat,
     HistoSys,
     LumiSys,
     NormSys,
@@ -93,6 +94,10 @@ class BinnedNLL:
                 for mod in sample.modifiers:
                     if isinstance(mod, (NormSys, HistoSys)):
                         self._constrained.add(mod.parameter.name)
+                    elif isinstance(mod, EigenmodeStat):
+                        # z_i ~ N(0, 1): same constraint as NormSys alphas
+                        for p in mod.parameters:
+                            self._constrained.add(p.name)
                     elif isinstance(mod, StatError):
                         for p, delta in zip(
                                 mod.parameters, mod.rel_uncertainties,

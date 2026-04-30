@@ -24,6 +24,7 @@ from histimator.likelihood import BinnedNLL, FitResult, fit
 from histimator.model import Model
 from histimator.parameters import Parameter
 from histimator.samples import (
+    EigenmodeStat,
     HistoSys,
     LumiSys,
     NormFactor,
@@ -60,6 +61,7 @@ __all__ = [
     "ShapeSys",
     "ShapeFactor",
     "LumiSys",
+    "EigenmodeStat",
     "Channel",
     "Model",
     "Dataset",

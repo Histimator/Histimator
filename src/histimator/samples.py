@@ -49,7 +49,26 @@ class LumiSys:
     parameter: Parameter
     uncertainty: float
 
-Modifier = NormFactor | NormSys | HistoSys | StatError | ShapeSys | ShapeFactor | LumiSys
+@dataclass(frozen=True)
+class EigenmodeStat:
+    """Eigenmode-decomposed template statistical uncertainty.
+
+    Instead of per-bin gamma parameters (StatError), this modifier
+    represents template uncertainty via a small number of eigenmode
+    amplitudes z_i ~ N(0, 1).  The expected counts are multiplied by
+    exp(V @ diag(sqrt_lambda) @ z), where V is the matrix of retained
+    eigenvectors and sqrt_lambda are the square roots of the
+    corresponding eigenvalues.
+    """
+    parameters: list[Parameter]
+    sqrt_eigenvalues: np.ndarray
+    eigenvectors: np.ndarray  # shape (n_bins, n_modes)
+
+
+Modifier = (
+    NormFactor | NormSys | HistoSys | StatError
+    | ShapeSys | ShapeFactor | LumiSys | EigenmodeStat
+)
 
 
 class Sample:
@@ -95,12 +114,12 @@ class Sample:
         for m in self._modifiers:
             if isinstance(m, (NormFactor, NormSys, HistoSys, LumiSys)):
                 params.append(m.parameter)
-            elif isinstance(m, (StatError, ShapeSys, ShapeFactor)):
+            elif isinstance(m, (StatError, ShapeSys, ShapeFactor, EigenmodeStat)):
                 params.extend(m.parameters)
         return params
 
-    def add_normfactor(self, name, nominal=1.0, bounds=(0.0, 10.0)):
-        p = Parameter(name, value=nominal, bounds=bounds)
+    def add_normfactor(self, name, nominal=1.0, bounds=(0.0, 10.0), fixed=False):
+        p = Parameter(name, value=nominal, bounds=bounds, fixed=fixed)
         self._modifiers.append(NormFactor(parameter=p))
         return self
 
@@ -133,6 +152,49 @@ class Sample:
             for i in range(self._template.nbins)
         ]
         self._modifiers.append(StatError(parameters=params, rel_uncertainties=rel))
+        return self
+
+    def add_eigenmode_staterror(self, name, variance_threshold=0.95):
+        """Add eigenmode-decomposed MC statistical uncertainty.
+
+        Requires the sample's template to be a GPTemplate (constructed
+        via from_histogram with template_type="gp" or from_dataset).
+        Builds an EigenmodeConstraint from the GP posterior covariance,
+        retains modes up to variance_threshold, and adds z_i ~ N(0,1)
+        parameters that modulate the template via exp(V sqrt(lambda) z).
+
+        Parameters
+        ----------
+        name : str
+            Base name for the eigenmode parameters.
+        variance_threshold : float
+            Fraction of total variance to retain (default 0.95).
+
+        Returns
+        -------
+        self
+        """
+        from histimator.eigenmode_constraint import EigenmodeConstraint
+        from histimator.gp_template import GPTemplate
+
+        if not isinstance(self._template, GPTemplate):
+            raise TypeError(
+                "add_eigenmode_staterror requires a GPTemplate, "
+                f"got {type(self._template).__name__}. "
+                "Use template_type='gp' when constructing the sample."
+            )
+        ec = EigenmodeConstraint(
+            self._template, variance_threshold=variance_threshold
+        )
+        params = [
+            Parameter(f"z_{name}_mode{i}", value=0.0, bounds=(-5.0, 5.0))
+            for i in range(ec.n_modes)
+        ]
+        self._modifiers.append(EigenmodeStat(
+            parameters=params,
+            sqrt_eigenvalues=ec.sqrt_eigenvalues,
+            eigenvectors=ec.eigenvectors,
+        ))
         return self
 
     def add_shapesys(self, name, rel_uncertainties):
@@ -178,6 +240,11 @@ class Sample:
             elif isinstance(mod, (StatError, ShapeSys, ShapeFactor)):
                 gammas = np.array([params.get(p.name, p.value) for p in mod.parameters])
                 result = result * gammas
+            elif isinstance(mod, EigenmodeStat):
+                z = np.array([params.get(p.name, p.value) for p in mod.parameters])
+                # exp(V @ diag(sqrt_lambda) @ z) per-bin multiplicative shift
+                log_shift = mod.eigenvectors @ (mod.sqrt_eigenvalues * z)
+                result = result * np.exp(log_shift)
             elif isinstance(mod, LumiSys):
                 lumi = params.get(mod.parameter.name, mod.parameter.value)
                 result = result * lumi
