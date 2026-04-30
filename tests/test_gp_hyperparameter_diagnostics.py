@@ -221,8 +221,6 @@ class TestMarginalLikelihoodLandscape:
 class TestVarianceDecomposition:
     """GP kernel K must contribute meaningfully relative to H B H^T."""
 
-    @pytest.mark.xfail(reason="With bspline mean (beta_prior_variance=100), "
-                              "the mean function absorbs most variance by design")
     def test_gp_kernel_not_negligible_vs_mean_function(self):
         """After optimisation, mean(diag(K)) >= 5% of mean(diag(HBH^T)).
 
@@ -339,11 +337,8 @@ class TestLengthscaleNotSaturated:
             "Estimates are unstable — optimiser may be on a flat plateau."
         )
 
-    @pytest.mark.xfail(reason="With bspline mean, lengthscale is invariant "
-                              "to distribution shape by design")
     def test_narrower_distribution_gets_shorter_lengthscale(self):
         """A narrower bump should receive a shorter lengthscale on average."""
-        rng = np.random.default_rng(60)
         ells_narrow, ells_wide = [], []
         for seed in range(5):
             h_narrow = _gaussian_bump_hist(seed=seed + 60, scale=1.0, total=300)

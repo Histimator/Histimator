@@ -330,7 +330,7 @@ def _select_mean_degree(
     centres: np.ndarray,
     edges: np.ndarray,
     kernel: GPKernel,
-    beta_prior_variance: float = 100.0,
+    beta_prior_variance: float = 4.0,
     min_degree: int = 1,
     max_degree: int = 3,
     sumw2: np.ndarray | None = None,
@@ -406,8 +406,19 @@ class GPTemplate:
         coefficients is propagated into the posterior covariance
         via kernel augmentation K_eff = K + H B H^T.
     beta_prior_variance : float
-        Prior variance on each mean function coefficient.  Should be
-        large enough that the data dominate (default 100).
+        Prior variance on each mean function coefficient used in the
+        **final Laplace inference** step (K_eff = K + H B H^T).  With
+        cubic B-splines (partition of unity), each row H_i satisfies
+        ||H_i||^2 ≈ 0.25, so the mean-function uncertainty diagonal
+        HBH^T ≈ beta_prior_variance × 0.25.  The default of 4 keeps
+        this comparable to the GP kernel diagonal (~1 at amplitude=1),
+        ensuring the GP smoothing is not dominated by mean-function
+        uncertainty.  Larger values make the augmented prior looser
+        but risk dwarfing the GP kernel contribution.
+
+        Note: hyperparameter optimisation always uses a constant mean
+        with no kernel augmentation, so beta_prior_variance does not
+        affect the selected (sigma, ell).
     """
 
     def __init__(
@@ -418,7 +429,7 @@ class GPTemplate:
         log_sigma: float = 0.0,
         log_ell: float = 0.0,
         mean_degree: int | str = "bspline",
-        beta_prior_variance: float = 100.0,
+        beta_prior_variance: float = 4.0,
     ) -> None:
         if not isinstance(histogram, Histogram):
             raise TypeError(
@@ -525,52 +536,89 @@ class GPTemplate:
         # Optimize or use fixed hyperparameters
         if optimize_hyperparameters and self._total > 0:
             data_range = self._edges[-1] - self._edges[0]
-            init_log_ell = np.log(max(data_range / 5.0, widths.mean()))
+            mean_width = float(widths.mean())
+            init_log_ell = np.log(max(data_range / 5.0, mean_width))
+
+            # Hard lengthscale bounds (theory-motivated).
+            # Lower: below ~1.5 bin widths the GP resolves structure
+            # finer than the binning supports and the Laplace
+            # approximation degrades.  Analogous to the KDE
+            # requirement nh -> inf (effective sample size per
+            # smoothing window must grow with n).
+            # Upper: beyond the domain width every bin is perfectly
+            # correlated and the GP collapses to a constant offset
+            # already absorbed by the mean function.
+            log_ell_min = np.log(1.5 * mean_width)
+            log_ell_max = np.log(data_range)
+
+            # Hyperparameter selection uses a constant log-rate mean with
+            # no kernel augmentation.  When the fitted B-spline WLS mean
+            # is passed to the LML, the mean already explains all the data
+            # variation and sigma -> 0 is always the global optimum
+            # regardless of lengthscale, causing the lengthscale to
+            # saturate at the domain boundary.  A constant mean forces the
+            # GP kernel to explain the distribution shape, giving a proper
+            # interior peak in the (sigma, ell) landscape.
+            # The data mean and polynomial paths have analogous reasons to
+            # use a neutral reference mean: both provide a fitted prior mean
+            # that is close to the data, leaving little for the GP to model.
+            hp_mean = np.full(
+                self._nbins,
+                np.log(max(self._total / data_range, 1e-10))
+            )
+            hp_h = None       # no kernel augmentation for HP selection
+            hp_bpv = 0.0
 
             if self._use_data_mean:
-                # With data mean, GP handles small residuals:
-                # smaller amplitude, wider prior to let marginal
-                # likelihood find the right smoothing scale.
                 prior_mean_le = init_log_ell
-                prior_width_le = 2.0
-                prior_mean_ls = -1.0  # smaller initial amplitude
-                prior_width_ls = 2.0
+                prior_width_le = 0.75
+                prior_mean_ls = 0.0
+                prior_width_ls = 1.0
             else:
                 prior_mean_le = init_log_ell
-                prior_width_le = 1.5
+                prior_width_le = 0.75
                 prior_mean_ls = 0.0
-                prior_width_ls = 2.0
+                prior_width_ls = 1.0
+
+            # Amplitude bounds: restrict below so the GP kernel is always
+            # a non-negligible contributor to the effective covariance.
+            log_sigma_bounds = (-2.0, 5.0)
 
             def neg_lml(params):
                 ls, le = params
                 val = _laplace_log_marginal(
                     counts, widths, kernel, ls, le,
-                    self._mean_values, centres,
-                    h=self._h,
-                    beta_prior_variance=beta_prior_variance,
+                    hp_mean, centres,
+                    h=hp_h,
+                    beta_prior_variance=hp_bpv,
                     sumw2=self._obs_sumw2,
                 )
                 penalty = (0.5 * ((le - prior_mean_le) / prior_width_le) ** 2
                            + 0.5 * ((ls - prior_mean_ls) / prior_width_ls) ** 2)
                 return (-val + penalty) if np.isfinite(val) else 1e10
 
+            bounds = [log_sigma_bounds, (log_ell_min, log_ell_max)]
+
             best_nll = np.inf
-            best_params = [log_sigma, init_log_ell]
+            best_params = [log_sigma, np.clip(init_log_ell,
+                                              log_ell_min, log_ell_max)]
             for init_le in [np.log(data_range / 10),
                             np.log(data_range / 5),
                             np.log(data_range / 3)]:
-                for init_ls in ([-2.0, -1.0, 0.0] if self._use_data_mean
-                                else [-0.5, 0.0, 0.5]):
+                init_le_c = np.clip(init_le, log_ell_min, log_ell_max)
+                for init_ls in [-0.5, 0.0, 0.5]:
                     try:
                         result = minimize(
                             neg_lml,
-                            x0=[init_ls, init_le],
-                            method="Nelder-Mead",
-                            options={"maxiter": 200, "xatol": 0.01, "fatol": 0.1},
+                            x0=[init_ls, init_le_c],
+                            method="L-BFGS-B",
+                            bounds=bounds,
+                            options={"maxiter": 500, "ftol": 1e-6},
                         )
                         if result.fun < best_nll:
                             best_nll = result.fun
-                            best_params = [float(result.x[0]), float(result.x[1])]
+                            best_params = [float(result.x[0]),
+                                           float(result.x[1])]
                     except Exception:
                         pass
 
@@ -788,7 +836,7 @@ class GPTemplate:
         optimize_hyperparameters: bool = True,
         log_sigma: float = 0.0,
         log_ell: float | None = None,
-        beta_prior_variance: float = 100.0,
+        beta_prior_variance: float = 4.0,
         n_quad: int = 40,
     ) -> GPTemplate:
         """Construct a GPTemplate from raw event positions (hybrid Cox path).
@@ -900,40 +948,83 @@ class GPTemplate:
         obs_model = HybridCoxModel(n_events=n_events, quad_weights=quad_weights)
 
         if optimize_hyperparameters:
+            # Hyperparameter selection uses the BINNED Poisson marginal
+            # likelihood rather than the Cox marginal likelihood.  The
+            # Cox likelihood sees individual event positions and rewards
+            # short lengthscales that track local density noise.  The
+            # binned likelihood sees O(n_bins) counts and the Occam
+            # factor naturally penalises unnecessary complexity.  This
+            # separates model selection (binned) from model evaluation
+            # (unbinned), which is standard GP practice when the two
+            # tasks have different data granularity requirements.
+            #
+            # Crucially, HP selection uses a constant log-rate mean with
+            # NO kernel augmentation.  A fitted polynomial or B-spline
+            # mean already explains most of the data variation, so
+            # sigma -> 0 is always the LML optimum when that mean is
+            # passed to the LML computation — the GP contributes nothing.
+            # A constant mean forces the GP to explain the shape, giving
+            # a proper interior peak in the (sigma, ell) landscape.
+            bin_counts = raw_counts.astype(float)
+            mean_vals_hp = np.full(
+                nbins,
+                np.log(max(float(bin_counts.sum()) / data_range, 1e-10))
+            )
+            h_hp = None      # no kernel augmentation for HP selection
+            bpv_hp = 0.0
+
             prior_mean_le = np.log(data_range / 5.0)
-            prior_width_le = 1.5
-            prior_width_ls = 2.0
+            prior_width_le = 0.75
+            prior_width_ls = 1.0
+
+            # Hard lengthscale bounds.  The lower bound uses the
+            # mean quadrature spacing: below this the GP resolves
+            # structure at scales the quadrature cannot integrate.
+            # The upper bound is the domain width, beyond which
+            # the kernel degenerates to a constant.
+            mean_spacing = data_range / max(n_quad, 1)
+            log_ell_min = np.log(1.5 * mean_spacing)
+            log_ell_max = np.log(data_range)
+            log_sigma_bounds = (-2.0, 5.0)
 
             def neg_lml(params):
                 ls, le = float(params[0]), float(params[1])
-                k = _kernel_matrix(x_aug, x_aug, kernel, ls, le)
-                k_eff = _augment_kernel(k, h_aug, beta_prior_variance)
-                k_eff += 1e-6 * np.eye(n_aug)
-                val = _cox_laplace_log_marginal(obs_model, k_eff, mean_aug)
+                val = _laplace_log_marginal(
+                    bin_counts, widths_user, kernel,
+                    ls, le, mean_vals_hp, user_centres,
+                    h=h_hp,
+                    beta_prior_variance=bpv_hp,
+                )
                 penalty = (
                     0.5 * ((le - prior_mean_le) / prior_width_le) ** 2
                     + 0.5 * (ls / prior_width_ls) ** 2
                 )
                 return (-val + penalty) if np.isfinite(val) else 1e10
 
+            bounds = [log_sigma_bounds, (log_ell_min, log_ell_max)]
+
             best_nll = np.inf
-            best_params = [log_sigma, log_ell]
+            best_params = [log_sigma, np.clip(log_ell,
+                                              log_ell_min, log_ell_max)]
             for init_le in [
                 np.log(data_range / 10),
                 np.log(data_range / 5),
                 np.log(data_range / 3),
             ]:
+                init_le_c = np.clip(init_le, log_ell_min, log_ell_max)
                 for init_ls in [-0.5, 0.0, 0.5]:
                     try:
                         result = minimize(
                             neg_lml,
-                            x0=[init_ls, init_le],
-                            method="Nelder-Mead",
-                            options={"maxiter": 200, "xatol": 0.01, "fatol": 0.1},
+                            x0=[init_ls, init_le_c],
+                            method="L-BFGS-B",
+                            bounds=bounds,
+                            options={"maxiter": 500, "ftol": 1e-6},
                         )
                         if result.fun < best_nll:
                             best_nll = result.fun
-                            best_params = [float(result.x[0]), float(result.x[1])]
+                            best_params = [float(result.x[0]),
+                                           float(result.x[1])]
                     except Exception:
                         pass
             log_sigma, log_ell = best_params
