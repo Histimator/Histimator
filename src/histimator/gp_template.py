@@ -51,12 +51,16 @@ No dependencies beyond numpy and scipy.
 from __future__ import annotations
 
 from enum import Enum
+from typing import TYPE_CHECKING
 
 import numpy as np
 from scipy.linalg import cho_factor, cho_solve, solve
 from scipy.optimize import minimize
 
 from histimator.histograms import Histogram
+
+if TYPE_CHECKING:
+    from histimator.templates import BinnedTemplate
 
 
 class GPKernel(Enum):
@@ -235,6 +239,15 @@ def _laplace_mode(
     f = mean_values.copy()
     weighted = sumw2 is not None
 
+    # Precompute factorisation and inverse of K -- these are
+    # constant across Newton iterations and dominate the cost
+    # when recomputed inside the loop.
+    try:
+        l_k_factor = cho_factor(k)
+    except np.linalg.LinAlgError:
+        l_k_factor = cho_factor(k + 1e-6 * np.eye(len(k)))
+    k_inv = cho_solve(l_k_factor, np.eye(len(k)))
+
     for _iteration in range(max_iter):
         mu = np.exp(np.clip(f, -20, 20)) * widths
 
@@ -250,9 +263,9 @@ def _laplace_mode(
             w = mu
             obs_grad = counts - mu
 
-        grad = obs_grad - solve(k, f - mean_values, assume_a="pos")
+        grad = obs_grad - k_inv @ (f - mean_values)
 
-        b = np.diag(w) + np.linalg.inv(k)
+        b = np.diag(w) + k_inv
         try:
             delta = solve(b, grad, assume_a="pos")
         except np.linalg.LinAlgError:
@@ -729,7 +742,12 @@ class GPTemplate:
     @property
     def posterior_variance(self) -> np.ndarray:
         """Posterior variance of log-rate at bin centres."""
-        return self._post_var.copy()
+        if hasattr(self, '_post_var_bins'):
+            return self._post_var_bins.copy()
+        if self._post_var.shape[0] == self._nbins:
+            return self._post_var.copy()
+        # Derive from bin-level covariance
+        return np.diag(self.posterior_covariance)
 
     @property
     def posterior_covariance(self) -> np.ndarray:
@@ -739,12 +757,59 @@ class GPTemplate:
         uncertainty from kernel augmentation K_eff = K + H B H^T
         (Rasmussen & Williams 2006, Sec. 2.7).
         For data mean: just the kernel posterior covariance.
+
+        For the Cox (from_dataset) path: the posterior covariance is
+        projected from the augmented training space to bin centres
+        using the GP predictive formula.
         """
-        return self._post_cov.copy()
+        if hasattr(self, '_post_cov_bins'):
+            return self._post_cov_bins.copy()
+        # If _post_cov is already at bin level, return it
+        if self._post_cov.shape[0] == self._nbins:
+            return self._post_cov.copy()
+        # Project augmented-space covariance to bin centres
+        self._post_cov_bins = self._project_covariance_to_bins()
+        return self._post_cov_bins.copy()
+
+    def _project_covariance_to_bins(self) -> np.ndarray:
+        """Project augmented-space GP posterior to bin-centre covariance.
+
+        Uses the standard GP predictive covariance formula:
+            Cov(f*, f*) = K** - K*X K_XX^{-1} K*X^T
+                        + K*X K_XX^{-1} Sigma K_XX^{-1} K*X^T
+        """
+        from scipy.linalg import solve
+
+        user_centres = 0.5 * (self._edges[:-1] + self._edges[1:])
+        k_star_eff = self._cross_k_eff(user_centres)  # (nbins, n_aug)
+        k_ss = _kernel_matrix(user_centres, user_centres, self._kernel_type,
+                              self._log_sigma, self._log_ell)
+        # Add mean function augmentation to k_ss
+        if not self._use_data_mean:
+            if self._use_bspline:
+                from scipy.interpolate import BSpline as _BSpline
+                h_star = _BSpline.design_matrix(
+                    user_centres, self._bspline_knots, self._bspline_degree,
+                ).toarray()
+            else:
+                h_star = _build_design_matrix(
+                    user_centres, self._mean_degree, self._x_min, self._x_max)
+            k_ss = k_ss + self._beta_prior_variance * (h_star @ h_star.T)
+        k_ss += 1e-6 * np.eye(self._nbins)
+
+        try:
+            v = solve(self._k, k_star_eff.T, assume_a="pos")  # (n_aug, nbins)
+            cov = k_ss - k_star_eff @ v + v.T @ self._post_cov @ v
+            cov = 0.5 * (cov + cov.T)
+        except np.linalg.LinAlgError:
+            cov = k_ss
+        return cov
 
     @property
     def log_rate(self) -> np.ndarray:
         """Posterior mode of the log-rate function at bin centres."""
+        if hasattr(self, '_f_hat_bins'):
+            return self._f_hat_bins.copy()
         return self._f_hat.copy()
 
     def counts(self) -> np.ndarray:
@@ -894,7 +959,6 @@ class GPTemplate:
 
         from histimator.cox_model import (
             HybridCoxModel,
-            _cox_laplace_log_marginal,
             _cox_laplace_mode,
             gauss_legendre_quadrature,
         )
@@ -1106,6 +1170,32 @@ class GPTemplate:
         obj._fitted_counts_raw = fitted_counts_raw
         obj._fitted_counts = fitted_counts
         obj._sumw2 = synth_hist.sumw2.copy()
+
+        # -- Project posterior to bin centres for EigenmodeConstraint ------
+        # GP predictive covariance at user_centres:
+        #   Sigma*(X*, X*) = K*(X*,X*) - K*(X*,X) V + V^T Sigma V
+        # where V = K_eff^{-1} K*(X*,X)^T
+        h_star = _BSpline.design_matrix(
+            user_centres, bspline_knots, 3).toarray()
+        k_star = _kernel_matrix(user_centres, x_aug, kernel,
+                                log_sigma, log_ell)
+        k_star_eff = k_star + beta_prior_variance * (h_star @ h_aug.T)
+        k_ss = _kernel_matrix(user_centres, user_centres, kernel,
+                              log_sigma, log_ell)
+        k_ss_eff = k_ss + beta_prior_variance * (h_star @ h_star.T)
+        k_ss_eff += 1e-6 * np.eye(nbins)
+
+        try:
+            v = solve(k_eff, k_star_eff.T, assume_a="pos")  # (n_aug, nbins)
+            post_cov_bins = k_ss_eff - k_star_eff @ v + v.T @ post_cov @ v
+            post_cov_bins = 0.5 * (post_cov_bins + post_cov_bins.T)
+        except np.linalg.LinAlgError:
+            post_cov_bins = k_ss_eff
+
+        obj._post_cov_bins = post_cov_bins
+        obj._post_var_bins = np.diag(post_cov_bins)
+        obj._f_hat_bins = f_at_centres
+
         return obj
 
     def predict_log_rate(self, x: np.ndarray) -> np.ndarray:
@@ -1180,3 +1270,54 @@ class GPTemplate:
             f"mean={md}, "
             f"total={self._total:.6g})"
         )
+
+
+# Default threshold for auto_template: when every bin has at least
+# this many counts, the fractional Poisson uncertainty is below ~10%
+# and the histogram shape is well determined by the data alone.
+# The GP smoothing provides diminishing returns in this regime
+# because the AMISE-optimal bandwidth (O(n^{-1/5})) shrinks below
+# the bin width, meaning the data already resolve all structure the
+# binning can support.
+_AUTO_TEMPLATE_MIN_COUNTS = 100
+
+
+def auto_template(
+    histogram: Histogram,
+    *,
+    min_counts_per_bin: int = _AUTO_TEMPLATE_MIN_COUNTS,
+    **gp_kwargs,
+) -> GPTemplate | BinnedTemplate:
+    """Choose between GPTemplate and BinnedTemplate automatically.
+
+    When every bin has enough counts the histogram itself is a good
+    density estimator and GP smoothing adds cost without benefit.
+    This factory inspects the bin counts and dispatches accordingly.
+
+    The threshold is motivated by the KDE bandwidth theory of
+    Silverman and Sheather-Jones: the AMISE-optimal bandwidth
+    scales as n^{-1/5}, so for large per-bin counts the optimal
+    smoothing window drops below the bin width and the GP
+    correction vanishes into the Poisson noise floor.
+
+    Parameters
+    ----------
+    histogram : Histogram
+        Binned data.
+    min_counts_per_bin : int
+        If ``min(counts) >= min_counts_per_bin`` a
+        :class:`BinnedTemplate` is returned.  Default 100,
+        corresponding to ~10% worst-case fractional uncertainty.
+    **gp_kwargs
+        Forwarded to :class:`GPTemplate` when smoothing is used.
+
+    Returns
+    -------
+    GPTemplate or BinnedTemplate
+    """
+    from histimator.templates import BinnedTemplate
+
+    counts = histogram.values
+    if counts.min() >= min_counts_per_bin:
+        return BinnedTemplate(histogram)
+    return GPTemplate(histogram, **gp_kwargs)

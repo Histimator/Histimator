@@ -84,7 +84,9 @@ class TestTemplateProtocol:
         assert gp._total == 30.0
 
     def test_posterior_covariance_shape(self, gp):
-        assert gp.posterior_covariance.shape == (len(gp._centres), len(gp._centres))
+        # posterior_covariance is bin-level (projected from the augmented
+        # training space when the GP is fit via from_dataset).
+        assert gp.posterior_covariance.shape == (gp.nbins, gp.nbins)
 
     def test_posterior_variance_positive(self, gp):
         assert np.all(gp.posterior_variance > 0)

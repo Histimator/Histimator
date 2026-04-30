@@ -17,7 +17,7 @@ from histimator.eigenmode_constraint import (
     SystematicDirection,
     make_systematic_direction,
 )
-from histimator.gp_template import GPKernel, GPTemplate
+from histimator.gp_template import GPKernel, GPTemplate, auto_template
 from histimator.histograms import Histogram
 from histimator.interpolation import InterpolationCode, interpolate
 from histimator.likelihood import BinnedNLL, FitResult, fit
@@ -43,6 +43,7 @@ __all__ = [
     "BSplineTemplate",
     "GPTemplate",
     "GPKernel",
+    "auto_template",
     "ObservationModel",
     "PoissonCountModel",
     "HybridCoxModel",
