@@ -24,11 +24,8 @@ to BinnedTemplate in that regime.
 """
 
 import numpy as np
-import pytest
 
 from histimator import GPTemplate, Histogram
-from histimator.templates import BinnedTemplate
-
 
 # ── Lengthscale bounds ───────────────────────────────────────────────────
 
